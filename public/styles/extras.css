@@ -1,0 +1,196 @@
+/* ============================================================
+   SEARCH RESULTS DROPDOWN + THEME TOGGLE + MISC EXTRAS
+   ============================================================ */
+
+/* ── Search Results ─────────────────────────────────────────── */
+.search-results {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0; right: 0;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+  z-index: 200;
+  display: none;
+  overflow: hidden;
+}
+
+.search-result-item {
+  padding: 10px 16px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background var(--transition);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.search-result-item:last-child { border-bottom: none; }
+
+.search-result-item:hover {
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+}
+
+/* ── Theme Toggle Button ─────────────────────────────────────── */
+.theme-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-xl);
+  color: var(--text-secondary);
+  font-family: var(--font-ui);
+  font-size: 12px;
+  padding: 5px 12px 5px 8px;
+  cursor: pointer;
+  transition: all var(--transition);
+  white-space: nowrap;
+}
+
+.theme-toggle:hover {
+  border-color: var(--border-default);
+  color: var(--text-primary);
+}
+
+.theme-toggle__icon {
+  font-size: 14px;
+  line-height: 1;
+}
+
+/* ── Sidebar scrolled shadow ─────────────────────────────────── */
+.sidebar::after {
+  content: '';
+  position: sticky;
+  bottom: 0;
+  display: block;
+  height: 24px;
+  background: linear-gradient(to top, var(--bg-surface), transparent);
+  pointer-events: none;
+}
+
+/* ── Code inline ─────────────────────────────────────────────── */
+code {
+  font-family: var(--font-code);
+  font-size: 0.88em;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  padding: 1px 5px;
+  color: var(--c-cleancode);
+}
+
+/* ── Responsive mobile menu ──────────────────────────────────── */
+.mobile-menu-btn {
+  display: none;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  color: var(--text-secondary);
+  padding: 6px 10px;
+  cursor: pointer;
+  font-size: 16px;
+}
+
+@media (max-width: 768px) {
+  .mobile-menu-btn { display: block; }
+
+  .sidebar {
+    display: none;
+    position: fixed;
+    top: 56px;
+    left: 0;
+    bottom: 0;
+    width: 280px;
+    z-index: 300;
+    box-shadow: 4px 0 24px rgba(0,0,0,0.3);
+  }
+
+  .sidebar.open { display: flex; }
+
+  .sidebar-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.5);
+    z-index: 299;
+  }
+
+  .sidebar-overlay.open { display: block; }
+}
+
+/* ── Scroll to top button ────────────────────────────────────── */
+.scroll-top-btn {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-default);
+  color: var(--text-secondary);
+  font-size: 16px;
+  cursor: pointer;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  transition: all var(--transition);
+  z-index: 100;
+}
+
+.scroll-top-btn.visible {
+  display: flex;
+}
+
+.scroll-top-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+  transform: translateY(-2px);
+}
+
+/* ── Keyboard shortcut hint ──────────────────────────────────── */
+.kbd {
+  display: inline-block;
+  font-family: var(--font-code);
+  font-size: 10px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-default);
+  border-bottom-width: 2px;
+  border-radius: 3px;
+  padding: 1px 5px;
+  color: var(--text-muted);
+}
+
+/* ── Nav progress indicator ──────────────────────────────────── */
+.nav-progress {
+  height: 2px;
+  background: var(--bg-elevated);
+  position: fixed;
+  top: 56px;
+  left: 0; right: 0;
+  z-index: 99;
+}
+
+.nav-progress__bar {
+  height: 100%;
+  background: linear-gradient(90deg, var(--c-cleancode), var(--c-patterns));
+  width: 0%;
+  transition: width 0.1s linear;
+}
+
+/* ── Print styles ────────────────────────────────────────────── */
+@media print {
+  .topbar, .sidebar, .theme-toggle, .scroll-top-btn { display: none !important; }
+  .app-shell {
+    display: block;
+    height: auto;
+    overflow: visible;
+  }
+  .main-content {
+    overflow: visible;
+    padding: 0;
+  }
+  .code-body { white-space: pre-wrap; }
+}

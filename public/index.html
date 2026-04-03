@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="it" data-theme="dark">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Clean Code & Design Patterns — Symfony PHP</title>
+  <meta name="description"
+    content="Guida interattiva: Clean Code, Design Patterns, Doctrine ORM, Redis, Elasticsearch con Symfony e PHP">
+
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link
+    href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,300;0,400;0,500;0,700;1,400&family=Inter:wght@300;400;500;600;700&display=swap"
+    rel="stylesheet">
+
+  <!-- Stylesheets -->
+  <link rel="stylesheet" href="./styles/main.css">
+  <link rel="stylesheet" href="./styles/theme-light.css">
+  <link rel="stylesheet" href="./styles/extras.css">
+</head>
+
+<body>
+
+  <!-- ── Reading progress bar ──────────────────────────────────── -->
+  <div class="nav-progress">
+    <div class="nav-progress__bar" id="progress-bar"></div>
+  </div>
+
+  <!-- ── App Shell ─────────────────────────────────────────────── -->
+  <div class="app-shell">
+
+    <!-- TOPBAR -->
+    <header class="topbar">
+      <div class="topbar__logo">
+        <div class="topbar__logo-icon">⚡</div>
+        <span>symfony<span style="color:var(--c-symfony)">·guide</span></span>
+      </div>
+
+      <div class="topbar__search">
+        <span class="topbar__search-icon">⌕</span>
+        <input type="text" id="search-input" placeholder="Cerca topic, pattern, concetti… (/)">
+        <div class="search-results" id="search-results"></div>
+      </div>
+
+      <div class="topbar__right">
+        <div class="progress-badge" id="progress-badge">
+          <div class="progress-badge__dot"></div>
+          <span id="progress-text">0 / 10 quiz</span>
+        </div>
+
+        <button class="theme-toggle" id="theme-toggle" onclick="toggleTheme()" title="Cambia tema">
+          <span class="theme-toggle__icon" id="theme-icon">◑</span>
+          <span id="theme-label">Dark</span>
+        </button>
+
+        <button class="mobile-menu-btn" id="mobile-menu-btn" onclick="toggleMobileMenu()">☰</button>
+      </div>
+    </header>
+
+    <!-- SIDEBAR -->
+    <nav class="sidebar" id="sidebar">
+      <!-- Built by buildSidebar() in app.js -->
+    </nav>
+
+    <!-- MAIN -->
+    <main class="main-content" id="main-content">
+      <!-- Rendered by navigate() in app.js -->
+    </main>
+
+  </div>
+
+  <!-- ── Mobile overlay ────────────────────────────────────────── -->
+  <div class="sidebar-overlay" id="sidebar-overlay" onclick="closeMobileMenu()"></div>
+
+  <!-- ── Scroll to top ─────────────────────────────────────────── -->
+  <button class="scroll-top-btn" id="scroll-top-btn" onclick="scrollToTop()" title="Torna in cima">↑</button>
+
+  <!-- ============================================================
+     SCRIPTS — load order matters
+     ============================================================ -->
+
+  <!-- 1. Data -->
+  <script src="./data/topics.js"></script>
+
+  <!-- 2. Component helpers (must load before views) -->
+  <script src="./components/components.js"></script>
+
+  <!-- 3. Views -->
+  <script src="./components/view-cleancode.js"></script>
+  <script src="./components/view-solid.js"></script>
+  <script src="./components/view-patterns.js"></script>
+  <script src="./components/view-infra.js"></script>
+  <script src="./components/view-quality.js"></script>
+
+  <!-- 4. Theme switcher (before app init) -->
+  <script src="./components/theme-switcher.js"></script>
+
+  <!-- 5. Main app router -->
+  <script src="./components/app.js"></script>
+
+  <!-- 6. UI extras -->
+  <script>
+    // ── Theme: init before paint ──────────────────────────────────
+    (function () { initTheme(); })();
+
+    // ── Keyboard shortcut: "/" → focus search ────────────────────
+    document.addEventListener('keydown', function (e) {
+      if (e.key === '/' && !['INPUT', 'TEXTAREA'].includes(document.activeElement.tagName)) {
+        e.preventDefault();
+        document.getElementById('search-input').focus();
+      }
+      if (e.key === 'Escape') {
+        closeSearch();
+        closeMobileMenu();
+      }
+    });
+
+    // ── Reading progress bar ──────────────────────────────────────
+    document.addEventListener('DOMContentLoaded', function () {
+      const main = document.getElementById('main-content');
+      const bar = document.getElementById('progress-bar');
+      const btn = document.getElementById('scroll-top-btn');
+
+      main.addEventListener('scroll', function () {
+        const scrolled = main.scrollTop;
+        const total = main.scrollHeight - main.clientHeight;
+        const pct = total > 0 ? Math.round(scrolled / total * 100) : 0;
+        bar.style.width = pct + '%';
+        btn.classList.toggle('visible', scrolled > 300);
+      });
+    });
+
+    function scrollToTop() {
+      document.getElementById('main-content').scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    // ── Mobile menu ───────────────────────────────────────────────
+    function toggleMobileMenu() {
+      document.getElementById('sidebar').classList.toggle('open');
+      document.getElementById('sidebar-overlay').classList.toggle('open');
+    }
+
+    function closeMobileMenu() {
+      document.getElementById('sidebar').classList.remove('open');
+      document.getElementById('sidebar-overlay').classList.remove('open');
+    }
+
+    // ── Quiz progress badge ───────────────────────────────────────
+    const _origAnswer = window.answerQuiz;
+    window.answerQuiz = function (qi, oi) {
+      _origAnswer(qi, oi);
+      const answered = State.quizAnswered.length;
+      document.getElementById('progress-text').textContent = `${answered} / ${QUIZ_DATA.length} quiz`;
+    };
+  </script>
+
+</body>
+
+</html>

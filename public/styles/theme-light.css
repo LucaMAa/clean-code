@@ -1,0 +1,49 @@
+/* ============================================================
+   LIGHT THEME — overrides delle variabili dark
+   ============================================================ */
+
+[data-theme="light"] {
+  --bg-base:        #f0f2f7;
+  --bg-surface:     #ffffff;
+  --bg-elevated:    #f8f9fc;
+  --bg-hover:       #eef0f6;
+  --bg-active:      #e4e8f4;
+
+  --border-subtle:  rgba(60,80,130,0.10);
+  --border-default: rgba(60,80,130,0.18);
+  --border-strong:  rgba(60,80,130,0.30);
+
+  --text-primary:   #111827;
+  --text-secondary: #374151;
+  --text-muted:     #6b7280;
+  --text-inverse:   #ffffff;
+
+  /* Syntax — leggermente adattata al bianco */
+  --syn-keyword:   #7c3aed;
+  --syn-function:  #1d4ed8;
+  --syn-string:    #15803d;
+  --syn-comment:   #9ca3af;
+  --syn-class:     #c2410c;
+  --syn-number:    #0369a1;
+  --syn-variable:  #b91c1c;
+  --syn-attribute: #b45309;
+}
+
+[data-theme="light"] .code-body {
+  background: #f6f8fa;
+}
+
+[data-theme="light"] .code-header {
+  background: #eef0f5;
+}
+
+[data-theme="light"] .home-hero {
+  background: linear-gradient(135deg, rgba(56,189,248,0.06), rgba(167,139,250,0.06));
+}
+
+[data-theme="light"] .home-hero::before {
+  background: radial-gradient(circle, rgba(167,139,250,0.10), transparent 70%);
+}
+
+[data-theme="light"] ::-webkit-scrollbar-track { background: #f0f2f7; }
+[data-theme="light"] ::-webkit-scrollbar-thumb { background: #c9cdd8; }
