@@ -16,7 +16,6 @@ const NAV_STRUCTURE = [
     groupLabel: "Design Patterns",
     items: [
       { id: "creational",  icon: "◎",  label: "Creazionali",       accent: "#a78bfa", badge: "4"  },
-      { id: "structural",  icon: "⬡",  label: "Strutturali",       accent: "#a78bfa", badge: "4"  },
       { id: "behavioral",  icon: "⟳",  label: "Comportamentali",   accent: "#a78bfa", badge: "5"  },
     ]
   },

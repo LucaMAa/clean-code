@@ -466,7 +466,7 @@ foreach ($caption->extractMentions() as $username) {
 function ccStructure() {
   return `
 ${Callout({type:'info',title:'Struttura ideale di un Service Symfony',
-  body:'Costanti → costruttore con readonly DI → metodi pubblici → metodi privati. Niente logica nel costruttore, se non per esempio inizilizzare o settare valori di default (es. uuid).'})}
+  body:'Costanti → costruttore con readonly DI → metodi pubblici → metodi privati. Niente logica nel costruttore, se non per esempio inizializzare o settare valori di default (es. uuid).'})}
 ${CodeBlock({
   filename:'PostService.php — struttura completa',
   code:

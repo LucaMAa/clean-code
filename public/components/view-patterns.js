@@ -12,8 +12,7 @@ ${PageHeader({eyebrow:'Design Patterns — Creazionali', title:'Factory, Builder
 ${Tabs({id:'creational', accent, tabs:[
   {label:'🏭 Factory Method',   content: patFactory()},
   {label:'🏗️ Abstract Factory', content: patAbstractFactory()},
-  {label:'🔨 Builder',          content: patBuilder()},
-  {label:'♻️ Singleton',        content: patSingleton()},
+  {label:'🔨 Builder',          content: patBuilder()}
 ]})}`;
 }
 
@@ -137,65 +136,98 @@ function patAbstractFactory() {
 ${Callout({type:'info',title:'Abstract Factory',
   body:'Creare famiglie di oggetti correlati per ogni tipo di media: foto crea Thumbnail + Preview + CDNUploader coerenti. Video crea altro set coerente di strumenti.'})}
 ${CodeBlock({filename:'MediaProcessingFactory — Abstract Factory completo', code:
-`// Prodotti astratti
-interface ThumbnailGeneratorInterface  { public function generate(MediaFile $m): string; }
-interface PreviewGeneratorInterface    { public function generate(MediaFile $m): string; }
-interface StorageUploaderInterface     { public function upload(string $path): string; }
-
-// Abstract Factory
-interface MediaProcessingFactoryInterface
+`abstract class AbstractMediaProcessingFactory
 {
-    public function createThumbnailGenerator(): ThumbnailGeneratorInterface;
-    public function createPreviewGenerator(): PreviewGeneratorInterface;
-    public function createStorageUploader(): StorageUploaderInterface;
+    // Metodo astratto: ogni tipo di media deve implementare la generazione della thumbnail
+    abstract public function createThumbnailGenerator(): ThumbnailGeneratorInterface;
+
+    // Metodo astratto: ogni tipo di media deve implementare la generazione della preview
+    abstract public function createPreviewGenerator(): PreviewGeneratorInterface;
+
+    // Metodo astratto: ogni tipo di media deve implementare l'upload
+    abstract public function createStorageUploader(): StorageUploaderInterface;
+
+    // Metodo concreto condiviso da tutte le factory
+    public function process(MediaFile $media): ProcessedMedia
+    {
+        $thumbnail = $this->createThumbnailGenerator()->generate($media);
+        $preview   = $this->createPreviewGenerator()->generate($media);
+        $url       = $this->createStorageUploader()->upload($media->getPath());
+
+        return new ProcessedMedia($url, $thumbnail, $preview);
+    }
 }
 
-// Famiglia per le FOTO
-class PhotoProcessingFactory implements MediaProcessingFactoryInterface
+class PhotoProcessingFactory extends AbstractMediaProcessingFactory
 {
     public function createThumbnailGenerator(): ThumbnailGeneratorInterface
     {
         return new ImageThumbnailGenerator(width: 150, height: 150, format: 'webp');
     }
+
     public function createPreviewGenerator(): PreviewGeneratorInterface
     {
         return new ImagePreviewGenerator(maxWidth: 1080, quality: 85);
     }
+
     public function createStorageUploader(): StorageUploaderInterface
     {
         return new S3ImageUploader($this->s3Client, bucket: 'photos');
     }
 }
 
-// Famiglia per i VIDEO / REEL
-class VideoProcessingFactory implements MediaProcessingFactoryInterface
+class VideoProcessingFactory extends AbstractMediaProcessingFactory
 {
     public function createThumbnailGenerator(): ThumbnailGeneratorInterface
     {
         return new VideoThumbnailGenerator(atSecond: 1.0);
     }
+
     public function createPreviewGenerator(): PreviewGeneratorInterface
     {
         return new VideoPreviewGenerator(durationSec: 15, format: 'mp4');
     }
+
     public function createStorageUploader(): StorageUploaderInterface
     {
         return new S3VideoUploader($this->s3Client, bucket: 'videos');
     }
 }
 
-// MediaProcessor usa la factory — non sa se è foto o video
+class MediaProcessor
+{
+    public function process(MediaFile $media, AbstractMediaProcessingFactory $factory): ProcessedMedia
+    {
+        return $factory->process($media);
+    }
+}
+//Invece di fare questo:
 class MediaProcessor
 {
     public function process(MediaFile $media): ProcessedMedia
     {
-        $factory   = $this->factoryResolver->resolve($media->getMimeType());
-        $thumbnail = $factory->createThumbnailGenerator()->generate($media);
-        $preview   = $factory->createPreviewGenerator()->generate($media);
-        $url       = $factory->createStorageUploader()->upload($media->getPath());
-        return new ProcessedMedia($url, $thumbnail, $preview);
+        if ($media->getMimeType() === 'image/jpeg') {
+            $thumbnail = new ImageThumbnailGenerator(width: 150, height: 150, format: 'webp');
+            $preview   = new ImagePreviewGenerator(maxWidth: 1080, quality: 85);
+            $uploader  = new S3ImageUploader($s3Client, bucket: 'photos');
+        } elseif ($media->getMimeType() === 'video/mp4') {
+            $thumbnail = new VideoThumbnailGenerator(atSecond: 1.0);
+            $preview   = new VideoPreviewGenerator(durationSec: 15, format: 'mp4');
+            $uploader  = new S3VideoUploader($s3Client, bucket: 'videos');
+        } else {
+            throw new \Exception("Tipo di media non supportato");
+        }
+
+        return new ProcessedMedia(
+            $uploader->upload($media->getPath()),
+            $thumbnail->generate($media),
+            $preview->generate($media)
+        );
     }
-}`,
+}
+`,
+
+
 })}`;
 }
 

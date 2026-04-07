@@ -656,40 +656,49 @@ function secAuth() {
   return `
 ${CodeBlock({filename:'security.yaml — JWT + refresh token', code:
 `security:
+    # Configurazione hashing password
     password_hashers:
-        App\\Entity\\User:
-            algorithm: argon2id      # più sicuro di bcrypt per nuovi sistemi
+        App\\Entity\\User:        # Entità User
+            algorithm: argon2id # Algoritmo sicuro moderno (più resistente di bcrypt)
 
-    providers:
+    # Provider utenti
+    providers: // dice a Symfony come trovare un utente per login e permessi
         app_users:
-            entity: { class: App\\Entity\\User, property: email }
+            entity: 
+                class: App\\Entity\\User   # Usa entità User come provider
+                property: email         # Identifica utenti tramite email
 
-    firewalls:
+    # Firewalls: protezione percorsi e autenticazione
+    firewalls: // I firewall sono linee di protezione per i percorsi. In questo config ci sono due firewall principali:
         api:
-            pattern:   ^/api
-            stateless: true
-            jwt: ~
+            pattern:   ^/api       # Tutti i percorsi /api
+            stateless: true        # Nessuna sessione, tipico per API REST 
+            jwt: ~                  # Autenticazione tramite JWT
 
         main:
-            lazy: true
-            provider: app_users
+            lazy: true             # Attiva il firewall solo quando serve
+            provider: app_users    # Usa il provider definito sopra
             form_login:
-                login_path:  app_login
-                check_path:  app_login
-                enable_csrf: true
+                login_path:  app_login   # Percorso pagina login
+                check_path:  app_login   # Percorso verifica username/password
+                enable_csrf: true        # Protezione CSRF: tipo di attacco dove un sito malevolo fa eseguire azioni a un utente autenticato senza il suo consenso
+                \n Symfony genera un token segreto unico per ogni form e sessione
+                \n Il token viene inviato insieme ai dati del form
+                \n Quando Symfony riceve il form, controlla che il token sia valido
             logout:
-                path: app_logout
-                delete_cookies: [REMEMBERME]
+                path: app_logout         # Percorso logout
+                delete_cookies: [REMEMBERME] # Cancella cookie di "ricordami"
             remember_me:
-                secret:   '%kernel.secret%'
-                lifetime: 2592000  # 30 giorni
+                secret:   '%kernel.secret%' # Chiave per token "ricordami"
+                lifetime: 2592000          # 30 giorni in secondi
 
+    # Controllo accessi: chi può accedere a cosa
     access_control:
-        - { path: ^/api/auth/login,    roles: PUBLIC_ACCESS }
-        - { path: ^/api/auth/register, roles: PUBLIC_ACCESS }
-        - { path: ^/api/p/,            roles: PUBLIC_ACCESS }   # post pubblici
-        - { path: ^/api/admin,         roles: ROLE_ADMIN }
-        - { path: ^/api,               roles: ROLE_USER }`,
+        - { path: ^/api/auth/login,    roles: PUBLIC_ACCESS } # Login aperto a tutti
+        - { path: ^/api/auth/register, roles: PUBLIC_ACCESS } # Registrazione aperta
+        - { path: ^/api/p/,            roles: PUBLIC_ACCESS } # Post pubblici accessibili a tutti
+        - { path: ^/api/admin,         roles: ROLE_ADMIN }    # Solo admin Symfony controlla il ruolo prima di accedere al percorso. Questo significa che solo gli utenti con ROLE_ADMIN possono entrare.
+        - { path: ^/api,               roles: ROLE_USER }     # Tutte le altre API richiedono login`,
 })}`;
 }
 

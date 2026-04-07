@@ -22,8 +22,13 @@ ${Tabs({id:'doctrine', accent, tabs:[
 
 function docEntity() {
   return `
-${Callout({type:'info',title:'Entity = POPO — Plain Old PHP Object',
-  body:'Le Entity non dipendono da Doctrine. Sono classi PHP con attributi PHP 8.1. Doctrine le legge via Reflection per generare SQL — le entità non sanno di essere persistite.'})}
+${Callout({type:'info',title:'ORM',
+  body:`L’ORM (Object-Relational Mapping) è una tecnica di programmazione che permette di mappare oggetti di un linguaggio orientato agli oggetti (come PHP) a tabelle di un database relazionale. 
+  Con un ORM:
+  una classe PHP rappresenta una tabella 
+  un oggetto rappresenta una riga (record)
+  una proprietà rappresenta una colonna
+  Doctrine le legge via Reflection per generare SQL`})}
 ${CodeBlock({filename:'Post.php — Entity completa', code:
 `<?php
 declare(strict_types=1);
@@ -36,10 +41,10 @@ use Doctrine\\Common\\Collections\\{ArrayCollection, Collection};
 use Doctrine\\ORM\\Mapping as ORM;
 
 #[ORM\\Entity(repositoryClass: PostRepository::class)]
-#[ORM\\Table(name: 'posts')]
+#[ORM\\Table(name: 'posts')] // nome della tabella
 #[ORM\\HasLifecycleCallbacks]
 #[ORM\\Index(columns: ['published_at'], name: 'idx_post_published_at')]
-#[ORM\\Index(columns: ['author_id', 'is_archived'], name: 'idx_post_author_status')]
+#[ORM\\Index(columns: ['author_id', 'is_archived'], name: 'idx_post_author_status')] // index
 class Post
 {
     public const TYPE_PHOTO    = 'photo';
@@ -49,7 +54,7 @@ class Post
     public const TYPE_STORY    = 'story';
 
     #[ORM\\Id, ORM\\GeneratedValue, ORM\\Column]
-    private ?int $id = null;
+    private ?int $id = null; // property -> colonna id della tabella posts
 
     #[ORM\\Column(length: 12, unique: true)]
     private string $shortCode; // es: "Dv3kR9xABCd"
@@ -164,7 +169,7 @@ class Post
 function docRepo() {
   return `
 ${Callout({type:'warn',title:'Mai query nel Controller o nel Service!',
-  body:'Il Repository è l\'unico posto dove costruire query. Il Controller chiama il Service, il Service chiama il Repository — mai salti di layer.'})}
+  body:'Il Repository è l\'unico posto dove costruire query. Il Controller chiama il Service, il Service chiama il Repository — saltiamo il layer nel caso in cui EntityManager di doctrine può fare ciò che ci interessa.'})}
 ${CodeBlock({filename:'PostRepository.php — Repository completo', code:
 `class PostRepository extends ServiceEntityRepository
     implements PostRepositoryInterface
@@ -178,7 +183,8 @@ ${CodeBlock({filename:'PostRepository.php — Repository completo', code:
 
     public function findById(int $id): ?Post
     {
-        return $this->find($id);
+        return $this->find($id); // potrebbe non service, già EntityManager di Doctrine ha la find $this->entityManager->findOneBy(Post::class, ['id' => $id]);
+        // l’EntityManager è il componente centrale che gestisce il ciclo di vita delle entità
     }
 
     public function findByShortCode(string $code): ?Post
@@ -246,7 +252,7 @@ ${CodeBlock({filename:'PostRepository.php — Repository completo', code:
             ->getResult();
     }
 
-    /** Top post per like nell'ultimo mese */
+    /** Top post per like ultimo mese */
     public function findTrendingThisMonth(int $limit = 10): array
     {
         $since = new \\DateTimeImmutable('-30 days');
@@ -269,7 +275,7 @@ ${CodeBlock({filename:'PostRepository.php — Repository completo', code:
 
     public function save(Post $post, bool $flush = false): void
     {
-        $this->getEntityManager()->persist($post);
+        $this->getEntityManager()->persist($post); //anche qui spesso è solo ripetizione avere un metodo per ciò che già EntityManager può fare
         if ($flush) $this->getEntityManager()->flush();
     }
 
@@ -317,109 +323,85 @@ foreach ($posts as $post) {
 }
 // Sempre 1 query`,
 })}
-${SectionBlock({title:'Query complessa — statistiche per profilo', content: CodeBlock({
-  filename:'PostRepository.php — aggregazioni',
-  code:
-`public function getProfileStats(User $user): array
-{
-    return $this->createQueryBuilder('p')
-        ->select(
-            'COUNT(p.id)          as postCount',
-            'SUM(l.likeCount)     as totalLikes',
-            'SUM(c.commentCount)  as totalComments',
-            'AVG(l.likeCount)     as avgLikesPerPost',
-            'MAX(p.publishedAt)   as lastPostAt'
-        )
-        ->leftJoin(
-            'App\\Entity\\Like', 'l',
-            'WITH', 'l.post = p.id'
-        )
-        ->leftJoin(
-            'App\\Entity\\Comment', 'c',
-            'WITH', 'c.post = p.id'
-        )
-        ->where('p.author = :user')
-        ->andWhere('p.isArchived = false')
-        ->setParameter('user', $user)
-        ->getQuery()
-        ->getSingleResult();
-}
-
-public function findPostsByMultipleHashtags(array $hashtags, User $viewer, int $limit): array
-{
-    $subQuery = $this->createQueryBuilder('p2')
-        ->select('IDENTITY(ph.post)')
-        ->join('p2.hashtags', 'h2')
-        ->where('h2 IN (:tags)');
-
-    return $this->createQueryBuilder('p')
-        ->select('p', 'author')
-        ->join('p.author', 'author')
-        ->where($this->createQueryBuilder('p')->expr()->in('p.id', $subQuery->getDQL()))
-        ->andWhere('author.isPrivate = false')
-        ->andWhere('p.isArchived = false')
-        ->setParameter('tags', $hashtags)
-        ->orderBy('p.publishedAt', 'DESC')
-        ->setMaxResults($limit)
-        ->getQuery()
-        ->getResult();
-}`,
-})})}`;
+`;
 }
 
 function docRelations() {
   return `
 ${CodeBlock({filename:'Tutte le relazioni del dominio Instagram', code:
-`// User — ha molti Post (OneToMany)
-#[ORM\\OneToMany(mappedBy: 'author', targetEntity: Post::class,
-    cascade: ['persist'], fetch: 'EXTRA_LAZY')]
-#[ORM\\OrderBy(['publishedAt' => 'DESC'])]
+`// User → Post
+// Un utente può avere molti post (1 → N)
+#[ORM\OneToMany(mappedBy: 'author', targetEntity: Post::class,
+    cascade: ['persist'], fetch: 'EXTRA_LAZY')] // EXTRA_LAZY permette di eseguire operazioni su una collection (count, contains, slice, ecc.) senza caricare tutti gli elementi in memoria.
+#[ORM\OrderBy(['publishedAt' => 'DESC'])]
 private Collection $posts;
 
-// Post — ha molti MediaFile (OneToMany con cascade)
-#[ORM\\OneToMany(mappedBy: 'post', targetEntity: MediaFile::class,
-    cascade: ['persist', 'remove'], orphanRemoval: true)]
-#[ORM\\OrderBy(['position' => 'ASC'])]
+
+// Post → MediaFile
+// Un post può avere molti file (1 → N)
+// I file vengono salvati e cancellati automaticamente con il post
+// Se un file viene rimosso dalla collection → viene eliminato dal DB
+#[ORM\OneToMany(mappedBy: 'post', targetEntity: MediaFile::class,
+    cascade: ['persist', 'remove'], orphanRemoval: true)] // Significa che se rimuovi un elemento dalla collection, Doctrine lo elimina dal database
+#[ORM\OrderBy(['position' => 'ASC'])]
 private Collection $mediaFiles;
 
-// Post ↔ Hashtag (ManyToMany bidirezionale)
-// Lato Post:
-#[ORM\\ManyToMany(targetEntity: Hashtag::class, inversedBy: 'posts')]
-#[ORM\\JoinTable(name: 'post_hashtags')]
+
+// Post ↔ Hashtag
+// Relazione molti-a-molti (N ↔ N)
+// Un post può avere molti hashtag
+// Un hashtag può appartenere a molti post
+// Doctrine usa una tabella intermedia (post_hashtags)
+
+// Lato Post
+#[ORM\ManyToMany(targetEntity: Hashtag::class, inversedBy: 'posts')]
+#[ORM\JoinTable(name: 'post_hashtags')]
 private Collection $hashtags;
 
-// Lato Hashtag:
-#[ORM\\ManyToMany(targetEntity: Post::class, mappedBy: 'hashtags', fetch: 'EXTRA_LAZY')]
+// Lato Hashtag
+#[ORM\ManyToMany(targetEntity: Post::class, mappedBy: 'hashtags', fetch: 'EXTRA_LAZY')]
 private Collection $posts;
 
-// User ↔ User Follow (auto-referenziale ManyToMany)
-#[ORM\\ManyToMany(targetEntity: User::class, inversedBy: 'following')]
-#[ORM\\JoinTable(
+
+// User ↔ User (followers)
+// Relazione molti-a-molti auto-referenziale (N ↔ N)
+// Un utente può seguire molti utenti
+// Un utente può avere molti follower
+
+#[ORM\ManyToMany(targetEntity: User::class, inversedBy: 'following')]
+#[ORM\JoinTable(
     name: 'user_follows',
-    joinColumns: [new ORM\\JoinColumn(name: 'follower_id')],
-    inverseJoinColumns: [new ORM\\JoinColumn(name: 'following_id')]
+    joinColumns: [new ORM\JoinColumn(name: 'follower_id')],
+    inverseJoinColumns: [new ORM\JoinColumn(name: 'following_id')]
 )]
 private Collection $followers;
 
-#[ORM\\ManyToMany(targetEntity: User::class, mappedBy: 'followers')]
+#[ORM\ManyToMany(targetEntity: User::class, mappedBy: 'followers')]
 private Collection $following;
 
-// Like — entità di join con dati extra (timestamp)
-#[ORM\\Entity]
-#[ORM\\Table(name: 'likes')]
-#[ORM\\UniqueConstraint(columns: ['post_id', 'user_id'])]
+
+// Like (entità di join)
+// Serve per rappresentare una relazione molti-a-molti con dati extra (timestamp)
+// Ogni like collega un user e un post
+
+#[ORM\Entity]
+#[ORM\Table(name: 'likes')]
+#[ORM\UniqueConstraint(columns: ['post_id', 'user_id'])] // uno user può mettere like solo una volta per post
 class Like
 {
-    #[ORM\\ManyToOne(targetEntity: Post::class, inversedBy: 'likes')]
-    #[ORM\\JoinColumn(nullable: false, onDelete: 'CASCADE')]
+    // Molti like appartengono a un post (N → 1)
+    #[ORM\ManyToOne(targetEntity: Post::class, inversedBy: 'likes')]
+    #[ORM\JoinColumn(nullable: false, onDelete: 'CASCADE')]
     private Post $post;
 
-    #[ORM\\ManyToOne(targetEntity: User::class)]
-    #[ORM\\JoinColumn(nullable: false, onDelete: 'CASCADE')]
+    // Molti like appartengono a un utente (N → 1)
+    #[ORM\ManyToOne(targetEntity: User::class)]
+    #[ORM\JoinColumn(nullable: false, onDelete: 'CASCADE')]
     private User $user;
 
-    #[ORM\\Column(type: 'datetime_immutable')]
-    private \\DateTimeImmutable $likedAt;
+    // Data del like (informazione extra)
+    #[ORM\Column(type: 'datetime_immutable')]
+    private \DateTimeImmutable $likedAt;
 }`,
 })}`;
 }
@@ -493,44 +475,20 @@ ${CodeBlock({filename:'Migration — aggiunta tabella likes con indici', code:
                 user_id    INT NOT NULL,
                 liked_at   DATETIME NOT NULL COMMENT "(DC2Type:datetime_immutable)",
                 PRIMARY KEY(id),
-                UNIQUE INDEX uniq_like_post_user (post_id, user_id),
-                INDEX idx_like_user (user_id),
-                INDEX idx_like_post_date (post_id, liked_at),
+                UNIQUE INDEX uniq_like_post_user (post_id, user_id), // user può mettere like una sola volta a quel post
+                INDEX idx_like_user (user_id), // indice per user per velocizzare la lettura
+                INDEX idx_like_post_date (post_id, liked_at), indice combinato per post e data
                 CONSTRAINT fk_like_post FOREIGN KEY (post_id)
-                    REFERENCES posts (id) ON DELETE CASCADE,
+                    REFERENCES posts (id) ON DELETE CASCADE, // se il post viene eliminato elimina anche i like
                 CONSTRAINT fk_like_user FOREIGN KEY (user_id)
-                    REFERENCES users (id) ON DELETE CASCADE
+                    REFERENCES users (id) ON DELETE CASCADE // se lo user viene eliminato elimina anche i like (like che ha messo ad altre persone)
             ) ENGINE=InnoDB
         ');
-
-        // Indice per feed cronologico (usato nella query di feed)
-        $this->addSql('
-            CREATE INDEX idx_post_feed
-            ON posts (author_id, is_archived, published_at DESC)
-        ');
-
-        // Migra i like "vecchi" dalla colonna JSON alla tabella
-        $this->addSql('
-            INSERT INTO likes (post_id, user_id, liked_at)
-            SELECT
-                p.id,
-                JSON_UNQUOTE(j.user_id),
-                COALESCE(JSON_UNQUOTE(j.liked_at), p.published_at)
-            FROM posts p,
-                 JSON_TABLE(p.legacy_likes, "$[*]"
-                     COLUMNS(user_id VARCHAR(10) PATH "$.user_id",
-                             liked_at VARCHAR(30) PATH "$.liked_at")
-                 ) j
-            WHERE p.legacy_likes IS NOT NULL
-        ');
-
-        $this->addSql('ALTER TABLE posts DROP COLUMN legacy_likes');
     }
 
     public function down(Schema $schema): void
     {
         $this->addSql('DROP TABLE likes');
-        $this->addSql('DROP INDEX idx_post_feed ON posts');
     }
 }`,
 })}`;
@@ -599,7 +557,7 @@ class PostController extends AbstractController
         private readonly PostService $postService,
     ) {}
 
-    #[Route('/{id}/like', methods: ['POST'])]
+    #[Route('/post/{id}/like', methods: ['POST'])]
     public function like(int $id): JsonResponse
     {
         $user = $this->getUser();
@@ -609,7 +567,7 @@ class PostController extends AbstractController
         return $this->json(['status' => 'ok']);
     }
 
-    #[Route('', methods: ['POST'])]
+    #[Route('/post', methods: ['POST'])]
     public function create(Request $request): JsonResponse
     {
         $user = $this->getUser();
@@ -830,12 +788,8 @@ class LikeNotificationSubscriber implements EventSubscriberInterface
     public static function getSubscribedEvents(): array
     {
         return [
-            PostLikedEvent::class     => [
-                ['sendLikeNotification', 10],
-                ['trackEngagement',      5],
-            ],
-            PostCommentedEvent::class => 'sendCommentNotification',
-            UserFollowedEvent::class  => 'sendFollowNotification',
+            PostLikedEvent::class => 'sendLikeNotification',
+            PostCommentedEvent::class  => 'sendCommentNotification',
         ];
     }
 
@@ -872,7 +826,17 @@ class LikeNotificationSubscriber implements EventSubscriberInterface
             ]
         );
     }
-}`,
+}
+
+
+// come faccio poi ad utilizzare questo subscriber? 
+
+public function likePost(Post $post, User $user): void
+{
+    $like = new Like($post, $user);
+    $this->likeRepo->save($like, flush: true);
+    $this->dispatcher->dispatch(new PostLikedEvent($like));
+}`
 })}`;
 }
 
@@ -1345,8 +1309,8 @@ ${PageHeader({eyebrow:'Infrastruttura', title:'Elasticsearch — Ricerca Post e 
   accent})}
 ${Tabs({id:'elastic', accent, tabs:[
   {label:'⚙️ Index & Mapping', content: esMapping()},
+  {label:'Fos Elastica Bundle', content: esFosElastica()},
   {label:'🔍 Ricerca caption', content: esSearch()},
-  {label:'🔄 Sync con Doctrine', content: esSync()},
   {label:'📊 Aggregazioni',   content: esAggregations()},
 ]})}`;
 }
@@ -1354,314 +1318,131 @@ ${Tabs({id:'elastic', accent, tabs:[
 function esMapping() {
   return `
 ${CodeBlock({filename:'PostIndexer.php — crea l\'indice con mapping completo', code:
-`class PostIndexer
+`use FOS\ElasticaBundle\Persister\ObjectPersisterInterface;
+use App\Entity\Post;
+
+class PostIndexer
 {
-    private const INDEX = 'instagram_posts';
+    private ObjectPersisterInterface $persister;
 
-    public function createIndex(): void
+    public function __construct(ObjectPersisterInterface $persister)
     {
-        if ($this->client->indices()->exists(['index' => self::INDEX])) return;
-
-        $this->client->indices()->create([
-            'index' => self::INDEX,
-            'body'  => [
-                'settings' => [
-                    'number_of_shards'   => 2,
-                    'number_of_replicas' => 1,
-                    'analysis' => [
-                        'analyzer' => [
-                            'caption_analyzer' => [
-                                'type'      => 'custom',
-                                'tokenizer' => 'standard',
-                                'filter'    => ['lowercase', 'asciifolding', 'stop'],
-                            ],
-                            'hashtag_analyzer' => [
-                                'type'      => 'custom',
-                                'tokenizer' => 'keyword',
-                                'filter'    => ['lowercase'],
-                            ],
-                        ],
-                    ],
-                ],
-                'mappings' => [
-                    'properties' => [
-                        'id'         => ['type' => 'integer'],
-                        'shortCode'  => ['type' => 'keyword'],
-
-                        // Caption: ricerca full-text + keyword per exact match
-                        'caption' => [
-                            'type'     => 'text',
-                            'analyzer' => 'caption_analyzer',
-                            'fields'   => [
-                                'keyword' => ['type' => 'keyword', 'ignore_above' => 256],
-                            ],
-                        ],
-
-                        // Hashtag: keyword per match esatto, case-insensitive
-                        'hashtags' => [
-                            'type'     => 'keyword',
-                            'normalizer' => 'lowercase',
-                        ],
-
-                        // Autore
-                        'author' => [
-                            'properties' => [
-                                'id'         => ['type' => 'integer'],
-                                'username'   => ['type' => 'keyword'],
-                                'isVerified' => ['type' => 'boolean'],
-                                'isPrivate'  => ['type' => 'boolean'],
-                            ],
-                        ],
-
-                        'type'          => ['type' => 'keyword'],
-                        'likeCount'     => ['type' => 'integer'],
-                        'commentCount'  => ['type' => 'integer'],
-                        'isArchived'    => ['type' => 'boolean'],
-                        'publishedAt'   => ['type' => 'date'],
-
-                        // Geolocalizzazione per ricerca near location
-                        'location' => ['type' => 'geo_point'],
-
-                        // Autocomplete
-                        'suggest' => ['type' => 'completion'],
-                    ],
-                ],
-            ],
-        ]);
+        $this->persister = $persister;
     }
 
     public function indexPost(Post $post): void
     {
-        if ($post->isArchived() || $post->getAuthor()->isPrivate()) return;
-
-        $doc = [
-            'id'           => $post->getId(),
-            'shortCode'    => $post->getShortCode(),
-            'caption'      => (string) $post->getCaption(),
-            'hashtags'     => $post->getHashtagNames(),
-            'author'       => [
-                'id'         => $post->getAuthor()->getId(),
-                'username'   => $post->getAuthor()->getUsername(),
-                'isVerified' => $post->getAuthor()->isVerified(),
-                'isPrivate'  => $post->getAuthor()->isPrivate(),
-            ],
-            'type'         => $post->getType(),
-            'likeCount'    => $post->getLikeCount(),
-            'commentCount' => $post->getCommentCount(),
-            'isArchived'   => $post->isArchived(),
-            'publishedAt'  => $post->getPublishedAt()->format('c'),
-            'suggest'      => [
-                'input' => array_merge(
-                    [$post->getAuthor()->getUsername()],
-                    $post->getHashtagNames()
-                ),
-            ],
-        ];
-
-        if ($post->hasLocation()) {
-            $doc['location'] = [
-                'lat' => $post->getLatitude(),
-                'lon' => $post->getLongitude(),
-            ];
+        // Non indicizzare post archiviati o privati
+        if ($post->isArchived() || $post->getAuthor()->isPrivate()) {
+            $this->persister->delete($post); // rimuove dal search index se presente
+            return;
         }
 
-        $this->client->index([
-            'index' => self::INDEX,
-            'id'    => $post->getId(),
-            'body'  => $doc,
-        ]);
+        // Salva direttamente l'entità su Elasticsearch
+        $this->persister->replaceOne($post);
     }
 }`,
+})}`;
+}
+
+function esFosElastica() {
+   return `
+${CodeBlock({filename:'Fos Elastica Index', code:
+`fos_elastica:
+    clients:
+        default: { host: localhost, port: 9200 }
+
+    indexes:
+        instagram_posts:
+            types:
+                post:
+                    properties:
+                        id: { type: integer }
+                        shortCode: { type: keyword }
+                        caption:
+                            type: text
+                            analyzer: standard
+                            fields:
+                                keyword: { type: keyword, ignore_above: 256 }
+                        hashtags: { type: keyword, normalizer: lowercase }
+                        author:
+                            properties:
+                                id: { type: integer }
+                                username: { type: keyword }
+                                isVerified: { type: boolean }
+                                isPrivate: { type: boolean }
+                        type: { type: keyword }
+                        likeCount: { type: integer }
+                        commentCount: { type: integer }
+                        isArchived: { type: boolean }
+                        publishedAt: { type: date }
+                        location: { type: geo_point }
+                        suggest: { type: completion }
+                    persistence:
+                        driver: orm
+                        model: App\Entity\Post
+                        provider: ~
+                        finder: ~
+                        listener: true
+                        serializer:
+                            groups: [search]`,
 })}`;
 }
 
 function esSearch() {
   return `
 ${CodeBlock({filename:'PostSearchService.php — ricerca caption + hashtag', code:
-`class PostSearchService
+`use FOS\ElasticaBundle\Finder\PaginatedFinderInterface;
+use App\DTO\SearchPostsDTO;
+use App\Entity\User;
+
+class PostSearchService
 {
-    public function search(SearchPostsDTO $dto, User $viewer): SearchResult
-    {
-        $response = $this->client->search([
-            'index' => 'instagram_posts',
-            'body'  => [
-                'from'  => ($dto->page - 1) * $dto->perPage,
-                'size'  => $dto->perPage,
-                'query' => [
-                    'bool' => [
-                        'must'   => $this->buildMustClauses($dto),
-                        'filter' => $this->buildFilters($dto, $viewer),
-                    ],
-                ],
-                'sort'      => $this->buildSort($dto->sort),
-                'highlight' => [
-                    'fields' => [
-                        'caption' => ['fragment_size' => 150, 'number_of_fragments' => 2],
-                    ],
-                ],
-                'aggs' => $this->buildAggregations(),
-            ],
-        ]);
+    private PaginatedFinderInterface $postFinder;
 
-        return SearchResult::fromElastic($response);
+    public function __construct(PaginatedFinderInterface $postFinder)
+    {
+        $this->postFinder = $postFinder;
     }
 
-    private function buildMustClauses(SearchPostsDTO $dto): array
+    public function search(SearchPostsDTO $dto, User $viewer): array
     {
-        if (empty($dto->query)) {
-            return [['match_all' => (object) []]];
-        }
+        $query = $this->buildQuery($dto, $viewer);
 
-        // Cerca in caption (full-text) e hashtag/username (exact-ish)
-        return [[
-            'multi_match' => [
-                'query'     => $dto->query,
-                'fields'    => ['caption^1', 'hashtags^3', 'author.username^2'],
-                'type'      => 'best_fields',
-                'fuzziness' => 'AUTO',  // tollera typo: "#travl" trova "#travel"
-            ],
-        ]];
+        // PaginatedFinder restituisce paginazione integrata
+        return $this->postFinder->find($query, $dto->perPage, ($dto->page - 1) * $dto->perPage);
     }
 
-    private function buildFilters(SearchPostsDTO $dto, User $viewer): array
+    private function buildQuery(SearchPostsDTO $dto, User $viewer): array
     {
-        $filters = [
-            ['term'  => ['isArchived' => false]],
-            ['term'  => ['author.isPrivate' => false]],
+        $must = [];
+        $filter = [
+            ['term' => ['isArchived' => false]],
+            ['term' => ['author.isPrivate' => false]],
         ];
 
-        if ($dto->type) {
-            $filters[] = ['term' => ['type' => $dto->type]];
-        }
-
-        if ($dto->onlyVerified) {
-            $filters[] = ['term' => ['author.isVerified' => true]];
-        }
-
-        if ($dto->hashtag) {
-            $filters[] = ['term' => ['hashtags' => strtolower($dto->hashtag)]];
-        }
-
-        // Ricerca per location: post entro N km
-        if ($dto->latitude && $dto->longitude && $dto->radiusKm) {
-            $filters[] = [
-                'geo_distance' => [
-                    'distance' => "{$dto->radiusKm}km",
-                    'location' => ['lat' => $dto->latitude, 'lon' => $dto->longitude],
+        if ($dto->query) {
+            $must[] = [
+                'multi_match' => [
+                    'query'     => $dto->query,
+                    'fields'    => ['caption^1', 'hashtags^3', 'author.username^2'],
+                    'type'      => 'best_fields',
+                    'fuzziness' => 'AUTO',
                 ],
             ];
+        } else {
+            $must[] = ['match_all' => (object) []];
         }
 
-        if ($dto->publishedAfter) {
-            $filters[] = ['range' => ['publishedAt' => ['gte' => $dto->publishedAfter->format('c')]]];
-        }
-
-        return $filters;
-    }
-
-    // Autocomplete per la searchbar
-    public function autocomplete(string $prefix): array
-    {
-        $response = $this->client->search([
-            'index' => 'instagram_posts',
-            'body'  => [
-                '_source' => false,
-                'suggest' => [
-                    'post-suggest' => [
-                        'prefix'     => $prefix,
-                        'completion' => [
-                            'field'   => 'suggest',
-                            'size'    => 8,
-                            'fuzzy'   => ['fuzziness' => 1],
-                            'contexts' => [],
-                        ],
-                    ],
+        return [
+            'query' => [
+                'bool' => [
+                    'must'   => $must,
+                    'filter' => $filter,
                 ],
             ],
-        ]);
-
-        return array_map(
-            fn($opt) => $opt['text'],
-            $response['suggest']['post-suggest'][0]['options'] ?? []
-        );
-    }
-}`,
-})}`;
-}
-
-function esSync() {
-  return `
-${CodeBlock({filename:'ElasticsearchSyncSubscriber.php — sync real-time', code:
-`class ElasticsearchSyncSubscriber implements EventSubscriberInterface
-{
-    public function __construct(
-        private readonly MessageBusInterface $bus,
-    ) {}
-
-    public static function getSubscribedEvents(): array
-    {
-        return [
-            PostPublishedEvent::class => 'onPostPublished',
-            PostDeletedEvent::class   => 'onPostDeleted',
-            PostLikedEvent::class     => 'onPostLiked',  // aggiorna likeCount
+            'sort' => $dto->sort ? [$dto->sort => ['order' => 'desc']] : null,
         ];
-    }
-
-    // Pubblicazione → indicizza in background (async)
-    public function onPostPublished(PostPublishedEvent $event): void
-    {
-        $this->bus->dispatch(new IndexPostMessage($event->post->getId()));
-    }
-
-    // Cancellazione → rimuovi dall'indice
-    public function onPostDeleted(PostDeletedEvent $event): void
-    {
-        $this->bus->dispatch(new RemoveFromIndexMessage($event->postId));
-    }
-
-    // Like → aggiorna solo il campo likeCount (partial update)
-    public function onPostLiked(PostLikedEvent $event): void
-    {
-        $this->bus->dispatch(
-            new UpdatePostStatsMessage($event->post->getId())
-        );
-    }
-}
-
-// Handler — esegue il reindex asincrono
-#[AsMessageHandler]
-class IndexPostHandler
-{
-    public function __invoke(IndexPostMessage $msg): void
-    {
-        $post = $this->postRepo->findById($msg->postId);
-        if (!$post || $post->isArchived()) return;
-        $this->indexer->indexPost($post);
-    }
-}
-
-// Reindex completo da CLI (usato al deploy o dopo mapping change)
-#[AsCommand(name: 'app:elasticsearch:reindex-posts')]
-class ReindexPostsCommand extends Command
-{
-    protected function execute(InputInterface $in, OutputInterface $out): int
-    {
-        $io = new SymfonyStyle($in, $out);
-        $io->title('Reindex Posts → Elasticsearch');
-
-        $this->indexer->createIndex();
-        $posts    = $this->postRepo->findAll();
-        $chunks   = array_chunk($posts, 100);
-        $progress = $io->createProgressBar(count($posts));
-
-        foreach ($chunks as $chunk) {
-            $this->indexer->bulkIndex($chunk);
-            $progress->advance(count($chunk));
-        }
-
-        $progress->finish();
-        $io->success(count($posts) . ' posts indexed successfully.');
-        return Command::SUCCESS;
     }
 }`,
 })}`;
