@@ -58,22 +58,22 @@ const QUIZ_DATA = [
     q: "Nel pattern Factory Method, qual è il vantaggio principale?",
     opts: [
       "Riduce l'uso della memoria",
-      "Permette di creare oggetti senza specificare la classe concreta",
       "Garantisce una sola istanza della classe",
+      "Permette di creare oggetti senza specificare la classe concreta",
       "Aggiunge metodi a un oggetto a runtime"
     ],
-    ans: 1,
+    ans: 2,
     exp: "Il Factory Method delega la creazione degli oggetti alle sottoclassi, rispettando Open/Closed: puoi aggiungere nuovi tipi senza modificare il codice client."
   },
   {
     q: "Cos'è il problema N+1 in Doctrine ORM?",
     opts: [
-      "Un bug nel Query Builder",
       "Una query per la lista + N query per ogni elemento (una per relazione)",
+      "Un bug nel Query Builder",
       "Un errore di migrazione del database",
       "Un problema di connessione al database"
     ],
-    ans: 1,
+    ans: 0,
     exp: "N+1: carichi 10 utenti (1 query), poi per ogni utente fai una query per i suoi ordini (10 query) = 11 query totali. Si risolve con JOIN ed eager loading."
   },
   {
@@ -102,23 +102,23 @@ const QUIZ_DATA = [
     q: "Redis è preferito rispetto a un semplice file cache quando...",
     opts: [
       "Hai bisogno di cache persistente su disco",
-      "Devi condividere la cache tra più istanze dell'applicazione (scaling orizzontale)",
       "Vuoi ridurre l'uso della RAM",
+      "Devi condividere la cache tra più istanze dell'applicazione (scaling orizzontale)",
       "Hai pochi dati da cachare"
     ],
-    ans: 1,
+    ans: 2,
     exp: "Redis è in-memory e condiviso: perfetto per ambienti multi-server (k8s, load balancer). Supporta anche strutture dati avanzate, pub/sub, e TTL nativo."
   },
   {
-    q: "Nel pattern Decorator, come si aggiunge il comportamento all'oggetto originale?",
+    q: "In PHP/Symfony, a cosa serve la Reflection?",
     opts: [
-      "Modificando direttamente la classe originale",
-      "Ereditando dalla classe originale",
-      "Wrappando l'oggetto originale e delegando le chiamate",
-      "Usando la reflection per aggiungere metodi"
+      "A modificare il database",
+      "A leggere informazioni su classi e metodi a runtime",
+      "A compilare il codice più velocemente",
+      "A creare automaticamente interfacce"
     ],
-    ans: 2,
-    exp: "Il Decorator implementa la stessa interfaccia, riceve l'oggetto originale nel costruttore, esegue il suo comportamento aggiuntivo e delega all'oggetto inner."
+    ans: 1,
+    exp: "La Reflection permette di ispezionare classi, metodi e proprietà durante l'esecuzione, ad esempio per capire quali parametri richiede un costruttore."
   },
   {
     q: "In Elasticsearch, cosa rappresenta un 'indice'?",
@@ -135,22 +135,22 @@ const QUIZ_DATA = [
     q: "Cosa restituisce un test che segue il pattern AAA (Arrange-Act-Assert)?",
     opts: [
       "Array, Action, Assertion",
-      "Arrange: prepara lo stato, Act: esegui l'azione, Assert: verifica il risultato",
       "Niente, i test non restituiscono valori",
-      "Un booleano true/false"
+      "Un booleano true/false",
+      "Arrange: prepara lo stato, Act: esegui l'azione, Assert: verifica il risultato"
     ],
-    ans: 1,
+    ans: 3,
     exp: "AAA è la struttura base di un test leggibile: Arrange = setup dell'oggetto e dipendenze mock, Act = chiama il metodo, Assert = verifica il risultato atteso."
   },
   {
     q: "Il pattern Builder è utile quando...",
     opts: [
-      "Hai bisogno di una sola istanza della classe",
       "Devi creare oggetti con molti parametri opzionali in modo leggibile",
+      "Hai bisogno di una sola istanza della classe",
       "Vuoi convertire un'interfaccia in un'altra",
       "Hai bisogno di notificare più oggetti di un cambiamento"
     ],
-    ans: 1,
+    ans: 0,
     exp: "Il Builder evita i costruttori con 10+ parametri. Consente una fluent interface leggibile: new QueryBuilder()->select('u')->where('u.active = 1')->limit(10)->build()."
   }
 ];

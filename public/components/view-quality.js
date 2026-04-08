@@ -731,50 +731,17 @@ $users = $this->createQueryBuilder('u')
     ->getQuery()->getResult();
 // Doctrine escapa automaticamente — sicuro
 
-// XSS — Twig escapa sempre
-{{ post.caption }}         {# escaped: sicuro #}
-{{ post.caption|raw }}     {# attenzione! solo HTML fidato #}
 
 // CSRF — Symfony lo gestisce nei form
+// CSRF è un attacco in cui un malintenzionato ti fa fare un'azione non voluta su un sito dove sei già loggato
+// sfruttando il fatto che il browser invia automaticamente i tuoi cookie.
 class DeleteAccountType extends AbstractType {
     public function configureOptions(OptionsResolver $r): void {
         $r->setDefaults(['csrf_protection' => true]); // default!
     }
 }`,
 })}
-${SectionBlock({title:'Content Security Policy per il social', content: CodeBlock({
-  filename:'SecurityHeadersSubscriber.php',
-  code:
-`class SecurityHeadersSubscriber implements EventSubscriberInterface
-{
-    public static function getSubscribedEvents(): array
-    {
-        return [KernelEvents::RESPONSE => 'onResponse'];
-    }
-
-    public function onResponse(ResponseEvent $event): void
-    {
-        $response = $event->getResponse();
-
-        // Impedisce clickjacking (embed in iframe)
-        $response->headers->set('X-Frame-Options', 'DENY');
-
-        // Impedisce MIME sniffing
-        $response->headers->set('X-Content-Type-Options', 'nosniff');
-
-        // Permette media solo dal nostro CDN
-        $response->headers->set('Content-Security-Policy', implode('; ', [
-            "default-src 'self'",
-            "img-src 'self' https://cdn.instagram-clone.com data: blob:",
-            "media-src 'self' https://cdn.instagram-clone.com blob:",
-            "script-src 'self'",
-            "style-src 'self' 'unsafe-inline'",  // Tailwind inline styles
-            "connect-src 'self' https://api.instagram-clone.com",
-            "frame-ancestors 'none'",
-        ]));
-    }
-}`,
-})})}`;
+`;
 }
 
 // ── PERFORMANCE ───────────────────────────────────────────────

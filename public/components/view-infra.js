@@ -979,7 +979,7 @@ function renderRedis() {
   const accent = '#fb923c';
   return `
 ${PageHeader({eyebrow:'Infrastruttura', title:'Cache & Redis',
-  subtitle:'Redis per il feed cache, like count, sessioni, rate limiting dei like/commenti e code di messaggi asincroni.',
+  subtitle:'Redis (REmote DIctionary Server) nasce nel 2009 da Salvatore Sanfilippo, sviluppatore siciliano. Stava costruendo un sistema di analytics real-time e il database relazionale era troppo lento: aveva bisogno di incrementare contatori e leggere liste in microsecondi. La soluzione fu tenere tutto in memoria RAM, rinunciando alla persistenza come priorità.',
   accent})}
 <div class="stats-row" style="--accent-color:${accent}">
   <div class="stat-card"><div class="stat-card__value" style="color:${accent}">~1ms</div><div class="stat-card__label">Redis latency</div></div>

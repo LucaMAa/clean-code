@@ -4,10 +4,6 @@
 // ============================================================
 
 // ── Syntax Highlighter ──────────────────────────────────────
-// Tokenizer approach: scansiona il codice RAW una volta sola,
-// emette token colorati, poi HTML-escapa solo il testo dei token.
-// Non usa mai regex sul codice già trasformato → niente double-wrap.
-
 const KW = new Set([
   'class','interface','abstract','extends','implements',
   'public','protected','private','static','readonly','final',
@@ -23,7 +19,6 @@ function esc(s) {
 }
 
 function highlight(raw) {
-  // Tokenizer: restituisce array di {type, text}
   const tokens = [];
   let i = 0;
   const len = raw.length;
@@ -57,7 +52,6 @@ function highlight(raw) {
       i = j;
       continue;
     }
-    // YAML comment  # (only at start of line after spaces) — handled by hash above
     // Single-quoted string
     if (raw[i] === "'") {
       let j = i + 1;
@@ -95,7 +89,6 @@ function highlight(raw) {
       let j = i + 2;
       while (j < len && /[a-zA-Z0-9_]/.test(raw[j])) j++;
       const name = raw.slice(i+2, j);
-      // peek for (
       const isCall = raw[j] === '(';
       tokens.push({ t: 'op',  v: '->' });
       tokens.push({ t: isCall ? 'fn' : 'plain', v: name });
@@ -150,7 +143,6 @@ function highlight(raw) {
 
 // ── CodeBlock Component ──────────────────────────────────────
 function CodeBlock({ filename = '', badge = null, lang = 'php', code, noHighlight = false }) {
-  // highlight() lavora sul RAW e fa escaping internamente
   const body = noHighlight ? esc(code) : highlight(code);
   const badgeHtml = badge
     ? `<span class="badge badge--${badge.type || 'info'}">${badge.text}</span>`
@@ -230,4 +222,76 @@ function PageHeader({ eyebrow, title, subtitle, accent }) {
 </div>`;
 }
 
-// ── Utility (esc() è definita sopra, usata dal tokenizer) ────
+// ── Heading Component ────────────────────────────────────────
+function Heading({ level = 2, text, id = null }) {
+  const tag = `h${level}`;
+  const idAttr = id ? ` id="${id}"` : '';
+  return `<${tag}${idAttr}>${esc(text)}</${tag}>`;
+}
+
+// ── Paragraph Component ──────────────────────────────────────
+function Paragraph({ text }) {
+  return `<p>${text}</p>`;
+}
+
+// ── Table Component ──────────────────────────────────────────
+function Table({ headers = [], rows = [] }) {
+  const headerRow = headers.map(h => `<th>${esc(h)}</th>`).join('');
+  const bodyRows = rows.map(row =>
+    `<tr>${row.map(cell => `<td>${cell}</td>`).join('')}</tr>`
+  ).join('');
+  return `
+<table class="table">
+  <thead>
+    <tr>${headerRow}</tr>
+  </thead>
+  <tbody>
+    ${bodyRows}
+  </tbody>
+</table>`;
+}
+
+// ── BulletList Component ─────────────────────────────────────
+function BulletList({ items = [] }) {
+  const listItems = items.map(item => {
+    if (typeof item === 'string') {
+      return `<li>${item}</li>`;
+    }
+    const titlePart = item.title ? `<strong>${item.title}</strong>` : '';
+    const textPart = item.text ? `: ${item.text}` : '';
+    return `<li>${titlePart}${textPart}</li>`;
+  }).join('');
+  return `<ul class="bullet-list">${listItems}</ul>`;
+}
+
+// ── NumberedList Component ───────────────────────────────────
+function NumberedList({ items = [] }) {
+  const listItems = items.map(item => {
+    if (typeof item === 'string') {
+      return `<li>${item}</li>`;
+    }
+    const titlePart = item.title ? `<strong>${item.title}</strong>` : '';
+    const textPart = item.text ? `: ${item.text}` : '';
+    return `<li>${titlePart}${textPart}</li>`;
+  }).join('');
+  return `<ol class="numbered-list">${listItems}</ol>`;
+}
+
+// ── HorizontalRule Component ─────────────────────────────────
+function HorizontalRule() {
+  return `<hr class="hr-divider">`;
+}
+
+// ── Badge Component ──────────────────────────────────────────
+function Badge({ type = 'info', text }) {
+  return `<span class="badge badge--${type}">${esc(text)}</span>`;
+}
+
+// ── AlertBox Component ───────────────────────────────────────
+function AlertBox({ type = 'info', title, message }) {
+  return `
+<div class="alert alert--${type}">
+  <div class="alert__header">${title}</div>
+  <div class="alert__message">${message}</div>
+</div>`;
+}

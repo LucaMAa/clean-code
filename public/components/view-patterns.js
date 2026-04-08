@@ -776,9 +776,8 @@ ${PageHeader({eyebrow:'Design Patterns — Comportamentali', title:'Strategy, Ob
   accent})}
 ${Tabs({id:'behavioral', accent, tabs:[
   {label:'♟️ Strategy',  content: patStrategy()},
-  {label:'👁️ Observer',  content: patObserver()},
+  {label:'👁️ Relfection',  content: patReflection()},
   {label:'💡 Command',   content: patCommand()},
-  {label:'🔗 Chain',     content: patChain()},
   {label:'📋 Template',  content: patTemplate()},
 ]})}`;
 }
@@ -786,7 +785,21 @@ ${Tabs({id:'behavioral', accent, tabs:[
 function patStrategy() {
   return `
 ${Callout({type:'info',title:'Strategy Pattern',
-  body:'L\'algoritmo di ordinamento del feed è intercambiabile: cronologico, per engagement, algoritmico (ML), per location. Il FeedService non sa quale algoritmo usa — lo scambi a runtime.'})}
+  body:'L\'algoritmo di ordinamento del feed è intercambiabile: cronologico, per engagement, algoritmico (ML). Il FeedService non sa quale algoritmo usa — lo scambi a runtime senza modificare il codice.'})}
+${Heading({level:2, text:'Cos\'è il Strategy Pattern'})}
+${Paragraph({text:'Il Strategy Pattern è un pattern comportamentale che incapsula una famiglia di algoritmi in classi separate e intercambiabili, permettendo al client di scegliere quale algoritmo usare a runtime senza modificare il codice che lo utilizza. Risolve il problema: "Come evito enormi blocchi if/else per scegliere tra algoritmi diversi?"'})}
+
+${Heading({level:3, text:'Componenti principali'})}
+${Table({
+  headers: ['Componente', 'Ruolo', 'Nel tuo codice'],
+  rows: [
+    ['Strategy Interface', 'Contratto che tutte le implementazioni devono rispettare', 'FeedRankingStrategyInterface'],
+    ['Concrete Strategies', 'Implementazioni concrete di algoritmi diversi', 'ChronologicalRanking, EngagementRanking, MLRanking'],
+    ['Context', 'Classe che usa una strategy senza conoscere i dettagli', 'FeedService'],
+    ['Client', 'Chi decide quale strategy iniettare nel context', 'Controller che istanzia FeedService'],
+  ]
+})}
+
 ${CodeBlock({filename:'FeedRankingStrategy.php — algoritmo di feed intercambiabile', code:
 `interface FeedRankingStrategyInterface
 {
@@ -798,6 +811,7 @@ ${CodeBlock({filename:'FeedRankingStrategy.php — algoritmo di feed intercambia
 // Cronologico — più semplice
 class ChronologicalRanking implements FeedRankingStrategyInterface
 {
+    //Ordina i post dal più recente al più vecchio
     public function rank(array $posts, User $viewer): array
     {
         usort($posts, fn($a, $b) =>
@@ -811,6 +825,10 @@ class ChronologicalRanking implements FeedRankingStrategyInterface
 // Per engagement — like + commenti + saves nelle ultime 24h
 class EngagementRanking implements FeedRankingStrategyInterface
 {
+    //Ordina i post in base all’engagement recente(Popolarità).
+    // Come funziona:
+    // Per ogni post calcola uno score
+    // Ordina per score decrescente
     public function rank(array $posts, User $viewer): array
     {
         $scored = array_map(fn($post) => [
@@ -838,13 +856,13 @@ class EngagementRanking implements FeedRankingStrategyInterface
 // Algoritmico (ML) — chiama microservizio esterno
 class MLRanking implements FeedRankingStrategyInterface
 {
+    // Usa un modello di Machine Learning esterno
     public function rank(array $posts, User $viewer): array
     {
         $scores = $this->mlClient->scorePostsForUser(
             postIds: array_map(fn($p) => $p->getId(), $posts),
             userId:  $viewer->getId()
         );
-        // ordina per score ML
         usort($posts, fn($a, $b) =>
             ($scores[$b->getId()] ?? 0) <=> ($scores[$a->getId()] ?? 0)
         );
@@ -863,89 +881,417 @@ class FeedService
     public function getFeed(User $user, int $limit = 20): array
     {
         $posts = $this->postRepo->findCandidatesForFeed($user, $limit * 3);
+        // FeedService NON SA quale algoritmo sta usando
         return array_slice($this->ranking->rank($posts, $user), 0, $limit);
     }
 }`,
-})}`;
-}
+})}
 
-function patObserver() {
-  return `
-${Callout({type:'info',title:'Observer — Event-Driven',
-  body:'Quando un utente pubblica un Post, lo stesso evento scatena: notifiche ai follower, aggiornamento cache feed, analytics, moderazione contenuti. Nessun servizio sa degli altri.'})}
-${CodeBlock({filename:'PostPublishedEvent + Subscriber', code:
-`// L'evento — immutabile, porta tutti i dati necessari
-final class PostPublishedEvent
+${Heading({level:3, text:'Senza Strategy: il problema degli if/else'})}
+
+${CodeBlock({filename:'Senza Strategy — difficile da estendere', code:
+`public function getFeed(User $user, string $rankingType = 'chronological'): array
+{
+    $posts = $this->postRepo->findCandidatesForFeed($user, 60);
+    
+    if ($rankingType === 'chronological') {
+        usort($posts, fn($a, $b) => $b->getPublishedAt() <=> $a->getPublishedAt());
+    } elseif ($rankingType === 'engagement') {
+        // ... 10 righe di logica engagement
+        $scored = array_map(fn($post) => [
+            'post'  => $post,
+            'score' => $this->computeEngagementScore($post),
+        ], $posts);
+        usort($scored, fn($a, $b) => $b['score'] <=> $a['score']);
+        $posts = array_column($scored, 'post');
+    } elseif ($rankingType === 'ml') {
+        // ... 15 righe di logica ML
+    } elseif ($rankingType === 'trending') {
+        // ... aggiungere un nuovo algoritmo
+    }
+    
+    return array_slice($posts, 0, 20);
+}
+// Quando aggiungi una nuova strategia, devi modificare questa funzione!
+// Ogni cambio è rischioso — Open/Closed Principle violato.`,
+})}
+
+${Heading({level:3, text:'Con Strategy: pulito e estendibile'})}
+
+${CodeBlock({filename:'Con Strategy — facile da estendere', code:
+`class FeedService
 {
     public function __construct(
-        public readonly Post              $post,
-        public readonly User             $author,
-        public readonly DateTimeImmutable $publishedAt = new DateTimeImmutable(),
+        private readonly PostRepositoryInterface      $postRepo,
+        private readonly FeedRankingStrategyInterface $ranking,
+    ) {}
+
+    public function getFeed(User $user, int $limit = 20): array
+    {
+        $posts = $this->postRepo->findCandidatesForFeed($user, $limit * 3);
+        return array_slice($this->ranking->rank($posts, $user), 0, $limit);
+    }
+}
+
+// Nel controller — cambio strategia a runtime
+$ranking = match($request->get('sort')) {
+    'chronological' => new ChronologicalRanking(),
+    'engagement'    => new EngagementRanking(),
+    'ml'            => new MLRanking($mlClient),
+    default         => new EngagementRanking(),
+};
+
+$feedService = new FeedService($postRepo, $ranking);
+$feed = $feedService->getFeed($user);
+
+// Aggiungi una nuova strategia? Crei una classe, basta! FeedService non cambia mai.`,
+})}
+
+${Heading({level:3, text:'Vantaggi del Pattern Strategy'})}
+
+${BulletList({items:[
+  {title:'Niente if/else', text:'FeedService è semplice e leggibile. Non contiene logica di ranking.'},
+  {title:'Open/Closed Principle', text:'Aperto all\'estensione (aggiungi TrendingRanking), chiuso alla modifica (FeedService rimane intatto).'},
+  {title:'Single Responsibility', text:'ChronologicalRanking ordina cronologicamente. EngagementRanking calcola engagement. MLRanking chiama il servizio ML. Ognuno fa una cosa.'},
+  {title:'Testabilità', text:'Nel test inietti una mock strategy e testi FeedService isolato dalla logica di ranking.'},
+  {title:'Cambio dinamico', text:'L\'utente sceglie l\'algoritmo? Cambi la strategy a runtime senza riavviare nulla.'},
+]})})
+
+${Heading({level:3, text:'Strategy vs Factory: qual è la differenza?'})}
+
+${Table({
+  headers: ['Aspetto', 'Strategy', 'Factory'],
+  rows: [
+    ['Problema risolto', 'Come usare algoritmi diversi senza if/else', 'Come creare oggetti senza sapere quale classe istanziare'],
+    ['Focus', 'Comportamento (come faccio l\'operazione)', 'Creazione (come creo l\'oggetto)'],
+    ['Quando la usi', 'L\'algoritmo viene usato ripetutamente', 'L\'oggetto viene creato una sola volta'],
+    ['Chi decide?', 'Spesso il client esterno', 'La Factory decide, il client non sa'],
+  ]
+})}
+
+${CodeBlock({filename:'Differenza nella pratica', code:
+`// STRATEGY: il client sceglie quale algoritmo usare
+$ranking = match($request->get('sort')) {
+    'chronological' => new ChronologicalRanking(),
+    'engagement'    => new EngagementRanking(),
+    'ml'            => new MLRanking($mlClient),
+};
+$feedService = new FeedService($postRepo, $ranking);
+$feed = $feedService->getFeed($user);
+
+// FACTORY: la factory decide quale oggetto creare
+class RankingFactory
+{
+    public function create(string $type): FeedRankingStrategyInterface
+    {
+        return match($type) {
+            'chronological' => new ChronologicalRanking(),
+            'engagement'    => new EngagementRanking(),
+            'ml'            => new MLRanking($this->mlClient),
+        };
+    }
+}
+
+// Nel controller
+$ranking = $this->factory->create($request->get('sort'));
+$feedService = new FeedService($postRepo, $ranking);
+$feed = $feedService->getFeed($user);
+
+// La logica è identica. Usi Factory quando la CREAZIONE è complessa.
+// Nel tuo caso: Strategy pura, ma potresti aggiungere una Factory se MLRanking
+// richiedesse setup complicato (dipendenze, validazioni, configurazioni).`,
+})}
+
+${Heading({level:3, text:'Quando usare Strategy Pattern'})}
+
+${BulletList({items:[
+  {title:'Hai 2+ algoritmi intercambiabili', text:'Per la stessa operazione (ordinamento, pagamento, filtro, validazione).'},
+  {title:'Gli algoritmi cambiano a runtime', text:'L\'utente sceglie, una configurazione lo decide, un flag lo attiva — non è fisso al deploy.'},
+  {title:'Vuoi evitare if/else lunghi', text:'Se i tuoi metodi iniziano a diventare pieni di condizionali, è il segnale.'},
+  {title:'Ogni algoritmo è complesso', text:'Merita la sua classe, non una funzione privata nascosta.'},
+]})}
+`;
+}
+
+function patReflection() {
+  return `
+${Callout({type:'info', title:'Reflection API',
+  body:'La Reflection API permette di ispezionare classi, metodi, proprietà e parametri a runtime — senza conoscerli a compile time. È la base su cui Symfony costruisce il Dependency Injection Container, il Router e il sistema di validazione.'})}
+
+${Heading({level:2, text:'Cos\'è la Reflection API'})}
+
+${Paragraph({text:'Normalmente il codice sa già cosa sta usando: chiama metodi conosciuti, istanzia classi note. Con la Reflection puoi fare il contrario: dato un oggetto o una stringa con il nome di una classe, puoi scoprire a runtime quali metodi ha, quali parametri accettano, quali attributi PHP sono applicati, quali sono i tipi. Symfony usa questo meccanismo per costruire il container DI automaticamente.'})}
+
+${Heading({level:3, text:'I principali strumenti della Reflection API'})}
+
+${Table({
+  headers: ['Classe', 'Cosa ispeziona', 'Uso tipico'],
+  rows: [
+    ['ReflectionClass', 'La classe: metodi, proprietà, interfacce, attributi', 'Scoprire cosa implementa una classe a runtime'],
+    ['ReflectionMethod', 'Un singolo metodo: parametri, visibilità, return type', 'Capire come invocare un metodo dinamicamente'],
+    ['ReflectionParameter', 'Un parametro di un metodo: tipo, default, nullable', 'Autowiring del DI Container'],
+    ['ReflectionProperty', 'Una proprietà: tipo, valore default, visibilità', 'Serializzazione, ORM mapping'],
+    ['ReflectionAttribute', 'Gli attributi PHP #[] applicati a classe/metodo/prop', 'Routing, validazione, cache'],
+  ]
+})}
+
+${Heading({level:3, text:'Caso 1 — Ispezionare una classe'})}
+
+${Paragraph({text:'Il caso più semplice: dato il nome di una classe, scopri tutto quello che contiene.'})}
+
+${CodeBlock({filename:'ReflectionClass — ispezione base', code:
+`class UserService
+{
+    private UserRepository $repo;
+    private EmailSender    $emailSender;
+    private Logger         $logger;
+
+    public function __construct(
+        UserRepository $repo,
+        EmailSender    $emailSender,
+        Logger         $logger,
+    ) {
+        $this->repo        = $repo;
+        $this->emailSender = $emailSender;
+        $this->logger      = $logger;
+    }
+
+    public function activate(int $userId): void { ... }
+    public function deactivate(int $userId): void { ... }
+    private function sendWelcomeEmail(User $user): void { ... }
+}
+
+// Ispezione a runtime
+$ref = new ReflectionClass(UserService::class);
+
+echo $ref->getName();           // App\\Service\\UserService
+echo $ref->getShortName();      // UserService
+echo $ref->isAbstract();        // false
+echo $ref->getParentClass();    // false (nessun parent)
+
+// Tutti i metodi pubblici
+foreach ($ref->getMethods(ReflectionMethod::IS_PUBLIC) as $method) {
+    echo $method->getName(); // __construct, activate, deactivate
+}
+
+// Tutte le proprietà
+foreach ($ref->getProperties() as $prop) {
+    echo $prop->getName();   // repo, emailSender, logger
+    echo $prop->getType();   // UserRepository, EmailSender, Logger
+}`,
+})}
+
+${Heading({level:3, text:'Caso 2 — Autowiring: come Symfony risolve le dipendenze'})}
+
+${Paragraph({text:'Questo è l\'uso più importante della Reflection in Symfony. Il Container legge il costruttore di ogni service, scopre i tipi dei parametri, e li risolve automaticamente — senza che tu debba configurare nulla.'})}
+
+${CompareGrid({
+  badCode:
+`// Senza autowiring — configurazione manuale
+// services.yaml
+services:
+    App\\Service\\UserService:
+        arguments:
+            - '@App\\Repository\\UserRepository'
+            - '@App\\Service\\EmailSender'
+            - '@Psr\\Log\\LoggerInterface'
+
+// Ogni volta che aggiungi una dipendenza
+// devi aggiornare services.yaml a mano.
+// Con 50 service diventa un incubo.`,
+  goodCode:
+`// Con autowiring — zero configurazione
+// services.yaml
+services:
+    _defaults:
+        autowire: true
+
+    App\\Service\\UserService: ~
+    # Symfony legge il costruttore con Reflection
+    # e risolve le 3 dipendenze automaticamente`,
+})}
+
+${CodeBlock({filename:'SimpleContainer.php — implementazione minimale di autowiring', code:
+`// Ecco come funziona internamente — versione semplificata
+class SimpleContainer
+{
+    private array $bindings  = [];
+    private array $instances = [];
+
+    public function bind(string $abstract, string $concrete): void
+    {
+        $this->bindings[$abstract] = $concrete;
+    }
+
+    public function make(string $class): object
+    {
+        // Già in cache? Restituisci la stessa istanza (shared service)
+        if (isset($this->instances[$class])) {
+            return $this->instances[$class];
+        }
+
+        // 1. Rifletti sulla classe
+        $ref = new ReflectionClass($class);
+
+        // 2. Nessun costruttore? Instanzia direttamente
+        $constructor = $ref->getConstructor();
+        if ($constructor === null) {
+            return $this->instances[$class] = new $class();
+        }
+
+        // 3. Leggi i parametri del costruttore
+        $dependencies = [];
+        foreach ($constructor->getParameters() as $param) {
+            $type = $param->getType();
+
+            // Parametro senza tipo? Non possiamo risolverlo
+            if (!$type instanceof ReflectionNamedType || $type->isBuiltin()) {
+                if ($param->isDefaultValueAvailable()) {
+                    $dependencies[] = $param->getDefaultValue();
+                    continue;
+                }
+                throw new \\RuntimeException(
+                    "Cannot resolve parameter \${$param->getName()} in {$class}"
+                );
+            }
+
+            // 4. Risolvi ricorsivamente la dipendenza
+            $depClass      = $type->getName();
+            $dependencies[] = $this->make(
+                $this->bindings[$depClass] ?? $depClass
+            );
+        }
+
+        // 5. Instanzia con le dipendenze risolte
+        $instance = $ref->newInstanceArgs($dependencies);
+        return $this->instances[$class] = $instance;
+    }
+}
+
+// Utilizzo — il container risolve tutto automaticamente
+$container = new SimpleContainer();
+
+// Symfony fa questo per ogni interface → implementazione
+$container->bind(UserRepositoryInterface::class, DoctrineUserRepository::class);
+$container->bind(LoggerInterface::class, MonologLogger::class);
+
+// Una sola riga — il container legge il costruttore
+// e risolve UserRepository, EmailSender, Logger
+$userService = $container->make(UserService::class);`,
+})}
+
+${Heading({level:3, text:'Caso 3 — Leggere gli Attributi PHP #[]'})}
+
+${Paragraph({text:'Gli attributi PHP 8 sono metadati che puoi attaccare a classi, metodi e proprietà. La Reflection è l\'unico modo per leggerli a runtime. Symfony li usa per il routing, la validazione e la cache.'})}
+
+${CodeBlock({filename:'Attributi custom — Route + Cache + Validate', code:
+`// Definizione degli attributi
+#[\\Attribute(\\Attribute::TARGET_METHOD)]
+class Route
+{
+    public function __construct(
+        public readonly string $path,
+        public readonly string $method = 'GET',
     ) {}
 }
 
-// Subscriber 1: notifica i follower
-class FollowerNotificationSubscriber implements EventSubscriberInterface
+#[\\Attribute(\\Attribute::TARGET_METHOD)]
+class Cache
 {
-    public static function getSubscribedEvents(): array
-    {
-        return [PostPublishedEvent::class => ['onPostPublished', 10]];
-    }
+    public function __construct(public readonly int $ttl = 60) {}
+}
 
-    public function onPostPublished(PostPublishedEvent $event): void
+#[\\Attribute(\\Attribute::TARGET_PROPERTY)]
+class Validate
+{
+    public function __construct(
+        public readonly int    $maxLength = 255,
+        public readonly bool   $required  = true,
+    ) {}
+}
+
+// Controller con attributi applicati
+class PostController
+{
+    #[Route('/api/posts', method: 'GET')]
+    #[Cache(ttl: 120)]
+    public function index(): JsonResponse { ... }
+
+    #[Route('/api/posts/{id}', method: 'GET')]
+    #[Cache(ttl: 300)]
+    public function show(int $id): JsonResponse { ... }
+
+    #[Route('/api/posts', method: 'POST')]
+    public function create(Request $req): JsonResponse { ... }
+}
+
+// Lettore di attributi — come Symfony costruisce il router
+class AttributeRouteReader
+{
+    public function extractRoutes(string $controllerClass): array
     {
-        $followers = $this->followRepo->findFollowers($event->author);
-        foreach (array_chunk($followers, 100) as $batch) {
-            $this->bus->dispatch(new NotifyFollowersBatchMessage(
-                postId:      $event->post->getId(),
-                followerIds: array_map(fn($f) => $f->getId(), $batch),
-            ));
+        $ref    = new ReflectionClass($controllerClass);
+        $routes = [];
+
+        foreach ($ref->getMethods(ReflectionMethod::IS_PUBLIC) as $method) {
+            // Leggi tutti gli attributi #[Route] sul metodo
+            $routeAttrs = $method->getAttributes(Route::class);
+            $cacheAttrs = $method->getAttributes(Cache::class);
+
+            foreach ($routeAttrs as $routeAttr) {
+                $route = $routeAttr->newInstance(); // istanzia l'attributo
+                $cache = !empty($cacheAttrs)
+                    ? $cacheAttrs[0]->newInstance()
+                    : null;
+
+                $routes[] = [
+                    'path'    => $route->path,
+                    'method'  => $route->method,
+                    'handler' => [$controllerClass, $method->getName()],
+                    'ttl'     => $cache?->ttl,
+                ];
+            }
         }
+
+        return $routes;
     }
 }
 
-// Subscriber 2: invalida cache del feed dei follower
-class FeedCacheInvalidatorSubscriber implements EventSubscriberInterface
-{
-    public static function getSubscribedEvents(): array
-    {
-        return [PostPublishedEvent::class => ['onPostPublished', 5]];
-    }
+// Risultato
+$reader = new AttributeRouteReader();
+$routes = $reader->extractRoutes(PostController::class);
 
-    public function onPostPublished(PostPublishedEvent $event): void
-    {
-        $this->feedCache->invalidateForFollowers($event->author);
-        // invalida anche l'explore feed se ha abbastanza hashtag
-        if (count($event->post->getHashtags()) >= 3) {
-            $this->exploreCache->invalidate();
-        }
-    }
-}
+// [
+//   ['path' => '/api/posts',      'method' => 'GET',  'handler' => [...], 'ttl' => 120],
+//   ['path' => '/api/posts/{id}', 'method' => 'GET',  'handler' => [...], 'ttl' => 300],
+//   ['path' => '/api/posts',      'method' => 'POST', 'handler' => [...], 'ttl' => null],
+// ]`,
+})}
 
-// Subscriber 3: aggiorna analytics
-class PostAnalyticsSubscriber implements EventSubscriberInterface
-{
-    public static function getSubscribedEvents(): array
-    {
-        return [
-            PostPublishedEvent::class => 'onPostPublished',
-            PostLikedEvent::class     => 'onPostLiked',
-            CommentAddedEvent::class  => 'onCommentAdded',
-        ];
-    }
+${Heading({level:3, text:'Ok ma come fa a capire symfony da dove prendere le rotte? devo registrarle a mano ogni volta?'})}
+${CodeBlock({filename:'SimpleContainer.php — implementazione minimale di autowiring', code:
+`# config/routes.yaml
+_attributes:
+  resource: ../src/Controller/
+  type: attribute  # ← "Scannerizza i Controller e leggi gli Attribute"`,
+})}
 
-    public function onPostPublished(PostPublishedEvent $event): void
-    {
-        $this->analytics->track('post_published', [
-            'post_id'    => $event->post->getId(),
-            'author_id'  => $event->author->getId(),
-            'post_type'  => $event->post->getType(),
-            'hashtags'   => $event->post->getHashtagNames(),
-            'has_location' => $event->post->hasLocation(),
-        ]);
-    }
-}`,
-})}`;
+${Heading({level:3, text:'Quando usare (e quando evitare) la Reflection'})}
+
+${Table({
+  headers: ['Caso', 'Usala?', 'Perché'],
+  rows: [
+    ['Costruire un DI Container', '✓ Sì', 'È esattamente il suo scopo — autowiring basato sui tipi'],
+    ['Leggere attributi #[] a runtime', '✓ Sì', 'È l\'unico modo per farlo'],
+    ['Costruire un router da attributi', '✓ Sì', 'Symfony, Laravel e altri la usano così'],
+    ['Accedere a proprietà private nei test', '⚠ Solo nei test', 'Accettabile nei test, mai in produzione'],
+    ['Chiamare metodi privati di un\'altra classe', '✗ No', 'Rompe l\'encapsulation — ripensa il design'],
+    ['Usarla in ogni request HTTP', '✗ No', 'È lenta — Symfony compila il container in cache proprio per evitarlo'],
+  ]
+})}
+
+${Callout({type:'warn', title:'Attenzione alle performance',
+  body:'La Reflection è costosa. Symfony non usa ReflectionClass ad ogni request — compila tutto in PHP puro nella cache (var/cache). Se scrivi un sistema che usa Reflection, metti sempre una cache davanti: calcola una volta, salva il risultato, riusalo.'})}`;
 }
 
 function patCommand() {
@@ -1102,84 +1448,239 @@ class PostPublishPipeline
 
 function patTemplate() {
   return `
-${Callout({type:'info',title:'Template Method',
-  body:'Il processo di export di un Post (CSV, JSON, PDF per press kit, XML per partner) segue sempre la stessa struttura: fetch → filter → format → render. Solo i passi cambiano.'})}
-${CodeBlock({filename:'PostExporter — Template Method', code:
-`abstract class PostExporter
+${Callout({type:'info', title:'Template Method',
+  body:'Definisce lo scheletro di un algoritmo in una classe base, lasciando alle sottoclassi l\'implementazione di alcuni passi. La struttura non cambia mai — cambiano solo i dettagli.'})}
+
+${Heading({level:2, text:'Cos\'è il Template Method'})}
+
+${Paragraph({text:'Immagina di dover spedire una notifica agli utenti. Il processo è sempre lo stesso: prepara il messaggio → formatta per il canale → invia → logga. Cambia solo come formatti e come invii. Il Template Method mette lo scheletro fisso nella classe base, e delega i passi variabili alle sottoclassi.'})}
+
+${Heading({level:3, text:'Componenti principali'})}
+
+${Table({
+  headers: ['Componente', 'Ruolo', 'Nel tuo codice'],
+  rows: [
+    ['Classe astratta', 'Definisce il template method con lo scheletro fisso', 'AbstractNotificationSender'],
+    ['Template method', 'Il metodo final che chiama i passi in ordine', 'send()'],
+    ['Passi astratti', 'Obbligatori nelle sottoclassi — il \"cosa cambia\"', 'formatMessage(), deliver()'],
+    ['Hook', 'Opzionali — le sottoclassi possono sovrascriverli o no', 'afterSend()'],
+    ['Concrete class', 'Implementa solo i passi variabili', 'EmailSender, PushSender, SmsSender'],
+  ]
+})}
+
+${Heading({level:3, text:'Senza Template Method: il problema'})}
+
+${Paragraph({text:'Ogni classe di notifica implementa l\'intero processo da zero. Se aggiungi il logging, devi modificare tutte le classi. Se dimentichi un passo in una classe, il comportamento è inconsistente.'})}
+
+${CompareGrid({
+  badCode:
+`// Ogni sender reimplementa tutto il processo
+// Dimentichi il log in EmailSender? Nessuno te lo dice.
+
+class EmailSender
 {
-    // Template method — struttura fissa, non sovrascrivibile
-    final public function export(User $user, ExportDTO $params): ExportResult
+    public function send(User $user, string $message): void
     {
-        $posts    = $this->fetchPosts($user, $params);       // step 1
-        $filtered = $this->filterPosts($posts, $params);     // step 2
-        $data     = $this->formatData($filtered, $params);   // step 3
-        $output   = $this->render($data, $params);           // step 4
-        $this->afterExport($user, $output);                  // hook opzionale
-        return $output;
+        // Validazione — copiata ovunque
+        if (empty($message)) throw new \\InvalidArgumentException('Empty');
+        if (!$user->hasEmail()) throw new \\RuntimeException('No email');
+
+        // Formattazione specifica email
+        $html = "<html><body><p>{$message}</p></body></html>";
+        $subject = $this->extractSubject($message);
+
+        // Invio
+        $this->mailer->send($user->getEmail(), $subject, $html);
+
+        // Log — se te ne ricordi
+        $this->logger->info("Email sent to {$user->getId()}");
+    }
+}
+
+class SmsSender
+{
+    public function send(User $user, string $message): void
+    {
+        // Stessa validazione — duplicata!
+        if (empty($message)) throw new \\InvalidArgumentException('Empty');
+        if (!$user->hasPhone()) throw new \\RuntimeException('No phone');
+
+        // Formattazione specifica SMS (max 160 char)
+        $sms = mb_substr(strip_tags($message), 0, 160);
+
+        // Invio
+        $this->twilioClient->messages->create(
+            $user->getPhone(), ['body' => $sms]
+        );
+        // Log dimenticato! Bug silenzioso.
+    }
+}
+
+class PushSender
+{
+    public function send(User $user, string $message): void
+    {
+        // Validazione diversa — inconsistente!
+        if (!$message) return; // silenzioso invece di eccezione
+
+        // Formattazione push
+        $payload = ['title' => 'Notifica', 'body' => $message];
+
+        // Invio
+        $this->fcm->send($user->getDeviceToken(), $payload);
+        // Nessun log. Nessuna traccia.
+    }
+}
+
+// Vuoi aggiungere un controllo "utente bloccato" prima di inviare?
+// Devi modificare TUTTE e 3 le classi.`,
+
+  goodCode:
+`// Il processo è fisso nella classe base.
+// Le sottoclassi implementano SOLO il "come".
+
+abstract class AbstractNotificationSender
+{
+    // Template method — final: nessuno può cambiare l'ordine
+    final public function send(User $user, string $message): void
+    {
+        $this->validate($user, $message);           // step 1 — fisso
+        $formatted = $this->format($message);       // step 2 — variabile
+        $this->deliver($user, $formatted);          // step 3 — variabile
+        $this->afterSend($user, $message);          // step 4 — hook
     }
 
-    // Passo comune — usa sempre il repo
-    protected function fetchPosts(User $user, ExportDTO $params): array
+    // Passo fisso — uguale per tutti
+    private function validate(User $user, string $message): void
     {
-        return $this->postRepo->findByUserInPeriod(
-            $user, $params->from, $params->to
+        if (empty($message))
+            throw new \\InvalidArgumentException('Message cannot be empty');
+        if (!$this->canReceive($user))
+            throw new CannotDeliverException($user, static::class);
+    }
+
+    // Hook — opzionale, default: logga sempre
+    protected function afterSend(User $user, string $message): void
+    {
+        $channel = static::class;
+        $this->logger->info("Notification sent via {$channel} to {$user->getId()}");
+    }
+
+    // Passi astratti — ogni sottoclasse DEVE implementarli
+    abstract protected function canReceive(User $user): bool;
+    abstract protected function format(string $message): string;
+    abstract protected function deliver(User $user, string $formatted): void;
+}
+
+// Email: implementa solo i 3 passi variabili
+class EmailSender extends AbstractNotificationSender
+{
+    protected function canReceive(User $user): bool
+    {
+        return $user->hasEmail() && !$user->hasEmailOptOut(); // ha fornito il consenso di ricevere email (opt-out)
+    }
+
+    protected function format(string $message): string
+    {
+        return "<html><body><p>{$message}</p></body></html>";
+    }
+
+    protected function deliver(User $user, string $formatted): void
+    {
+        $this->mailer->send($user->getEmail(), 'Notifica', $formatted);
+    }
+}
+
+// SMS: implementa solo i 3 passi variabili
+class SmsSender extends AbstractNotificationSender
+{
+    protected function canReceive(User $user): bool
+    {
+        return $user->hasPhone();
+    }
+
+    protected function format(string $message): string
+    {
+        return mb_substr(strip_tags($message), 0, 160);
+    }
+
+    protected function deliver(User $user, string $formatted): void
+    {
+        $this->twilioClient->messages->create(
+            $user->getPhone(), ['body' => $formatted]
         );
     }
-
-    // Hook opzionale — default: nessuna azione
-    protected function filterPosts(array $posts, ExportDTO $params): array
-    {
-        return $posts; // le sottoclassi possono filtrare
-    }
-
-    // Passi astratti — obbligatori nelle sottoclassi
-    abstract protected function formatData(array $posts, ExportDTO $params): array;
-    abstract protected function render(array $data, ExportDTO $params): ExportResult;
-
-    // Hook post-export
-    protected function afterExport(User $user, ExportResult $result): void {} // no-op
 }
 
-// Export per il press kit (PDF con statistiche)
-class PressKitExporter extends PostExporter
+// Push: sovrascrive anche l'hook afterSend
+class PushSender extends AbstractNotificationSender
 {
-    protected function filterPosts(array $posts, ExportDTO $params): array
+    protected function canReceive(User $user): bool
     {
-        // Per il press kit solo i post con più engagement
-        return array_filter($posts, fn($p) => $p->getLikeCount() > 1000);
+        return $user->hasDeviceToken();
     }
 
-    protected function formatData(array $posts, ExportDTO $params): array
+    protected function format(string $message): string
     {
-        return array_map(fn($post) => [
-            'url'       => "https://instagram.com/p/{$post->getShortCode()}",
-            'thumbnail' => $post->getFirstMediaThumbnail(),
-            'likes'     => $post->getLikeCount(),
-            'comments'  => $post->getCommentCount(),
-            'caption'   => $post->getCaption()->preview(200),
-            'date'      => $post->getPublishedAt()->format('d/m/Y'),
-        ], $posts);
+        return json_encode(['title' => 'Notifica', 'body' => $message]);
     }
 
-    protected function render(array $data, ExportDTO $params): ExportResult
+    protected function deliver(User $user, string $formatted): void
     {
-        $pdf = $this->pdfGenerator->generatePressKit($data, $params->user);
-        return ExportResult::pdf($pdf, 'press_kit.pdf');
+        $this->fcm->send($user->getDeviceToken(), json_decode($formatted, true));
+    }
+
+    // Override hook — push ha bisogno di log speciale con delivery receipt
+    protected function afterSend(User $user, string $message): void
+    {
+        parent::afterSend($user, $message); // log base
+        $this->pushMetrics->trackDelivery($user->getDeviceToken());
     }
 }
 
-// Export dati per partner (JSON)
-class PartnerDataExporter extends PostExporter
+//Service che si occupa di inviare le notifiche
+class NotificationService
 {
-    protected function formatData(array $posts, ExportDTO $params): array { ... }
-    protected function render(array $data, ExportDTO $params): ExportResult
+    public function __construct(
+        private readonly EmailSender $emailSender,
+        private readonly SmsSender  $smsSender,
+        private readonly PushSender $pushSender,
+    ) {}
+
+    public function notifyNewFollower(User $user, User $follower): void
     {
-        return ExportResult::json(json_encode($data));
+        $message = "{$follower->getUsername()} ha iniziato a seguirti.";
+
+        // Qui viene chiamata send() — che internamente esegue
+        // validate → format → deliver → afterSend
+        $this->emailSender->send($user, $message);
+        $this->smsSender->send($user, $message);
+        $this->pushSender->send($user, $message);
     }
-    protected function afterExport(User $user, ExportResult $result): void
-    {
-        $this->auditLog->logExport($user, 'partner_data');
-    }
-}`,
-})}`;
+}
+
+`,
+})}
+
+${Heading({level:3, text:'Perché funziona'})}
+
+${Paragraph({text:'Aggiungi domani un controllo "utente in Do Not Disturb"? Modifichi validate() nella classe base — tutte e 3 le sottoclassi lo ricevono automaticamente. Aggiungi SlackSender? Crei una classe, implementi 3 metodi, hai finito.'})}
+
+${Table({
+  headers: ['Scenario', 'Senza Template Method', 'Con Template Method'],
+  rows: [
+    ['Aggiungere log a tutti i sender', 'Modifica 3 classi (rischi di dimenticarne una)', 'Modifica afterSend() nella base — finito'],
+    ['Aggiungere SlackSender', 'Copi tutto il processo, rischi bug', 'Estendi la base, implementi 3 metodi'],
+    ['Cambiare l\'ordine dei passi', 'Devi allineare tutte le classi a mano', 'Cambi solo il template method nella base'],
+    ['Testare il flusso comune', 'Devi testare ogni classe separatamente', 'Testi la base una volta, poi solo i passi variabili'],
+  ]
+})}
+${Heading({level:3, text:'Quando usare Template Method'})}
+
+${BulletList({items:[
+  {title:'Hai un processo con passi fissi e dettagli variabili', text:'La struttura non cambia, ma "come" si fanno certi passi dipende dal contesto.'},
+  {title:'Vuoi evitare duplicazione del codice comune', text:'Validazione, logging, cleanup — scritto una volta nella base, garantito in tutte le sottoclassi.'},
+  {title:'L\'algoritmo non deve cambiare a runtime', text:'Se devi scambiare l\'algoritmo dinamicamente, usa Strategy. Template Method è compile-time.'},
+  {title:'Vuoi dare hook opzionali senza obbligare', text:'afterSend() ha un default no-op — le sottoclassi lo sovrascrivono solo se ne hanno bisogno.'},
+]})}`;
 }
