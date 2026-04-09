@@ -439,6 +439,45 @@ body {
   tab-size: 4;
 }
 
+/* ── Blur / Reveal ───────────────────────────────────────────── */
+.code-body--blurred {
+  filter: blur(4px);
+  user-select: none;
+  transition: filter 0.35s ease;
+  cursor: pointer;
+  border-radius: 0;
+}
+
+.code-body--blurred.revealed {
+  filter: none;
+  user-select: auto;
+  cursor: auto;
+}
+
+.reveal-btn {
+  width: 100%;
+  padding: 8px var(--space-md);
+  background: rgba(34,197,94,0.08);
+  border: 1px solid rgba(34,197,94,0.25);
+  border-top: none;
+  border-radius: 0 0 var(--radius-md) var(--radius-md);
+  color: var(--good);
+  font-family: var(--font-ui);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background var(--transition);
+  text-align: center;
+}
+
+.reveal-btn:hover {
+  background: rgba(34,197,94,0.15);
+}
+
+.reveal-btn.hidden {
+  display: none;
+}
+
 /* ── Compare Grid ────────────────────────────────────────────── */
 .compare-grid {
   display: grid;
@@ -469,8 +508,13 @@ body {
 .compare-block__label--good { background: rgba(34,197,94,0.12);  color: var(--good); border: 1px solid rgba(34,197,94,0.25); border-bottom: none; }
 
 .compare-block .code-body {
-  border-radius: 0 0 var(--radius-md) var(--radius-md);
+  border-radius: 0;
   flex: 1;
+}
+
+/* When no reveal button, restore bottom radius on good side */
+.compare-block .code-body:not(.code-body--blurred):last-child {
+  border-radius: 0 0 var(--radius-md) var(--radius-md);
 }
 
 /* ── Cards ───────────────────────────────────────────────────── */
@@ -1222,4 +1266,35 @@ hr.hr-divider {
   font-size: 13px;
   color: var(--text-secondary);
   line-height: 1.65;
+}
+/* ── Mini IDE focus ──────────────────────────────────────── */
+#ide-area-naming:focus,
+#ide-area-functions:focus,
+#ide-area-dry:focus,
+#ide-area-comments:focus,
+#ide-area-dto:focus,
+#ide-area-structure:focus {
+  border-color: var(--border-strong);
+  box-shadow: 0 0 0 1px rgba(52,211,153,0.2);
+}
+
+/* ── Bug Hunt input focus ────────────────────────────────── */
+input[id^="bh-input-"]:focus {
+  border-color: var(--c-elastic) !important;
+}
+
+/* ── Method Guesser textarea focus ──────────────────────── */
+textarea[id^="mg-input-"]:focus {
+  border-color: var(--c-patterns) !important;
+}
+
+/* ── Score pulse ─────────────────────────────────────────── */
+@keyframes scorePulse {
+  0%   { transform: scale(1); }
+  40%  { transform: scale(1.18); }
+  100% { transform: scale(1); }
+}
+
+.stat-card__value.pulse {
+  animation: scorePulse 0.35s ease;
 }

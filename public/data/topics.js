@@ -8,7 +8,7 @@ const NAV_STRUCTURE = [
     groupLabel: "Fondamenti",
     items: [
       { id: "home",        icon: "⌂",  label: "Home",              accent: "#38bdf8", badge: null },
-      { id: "cleancode",   icon: "✦",  label: "Clean Code",        accent: "#38bdf8", badge: "12" },
+      { id: "cleancode",   icon: "✦",  label: "Clean Code",        accent: "#38bdf8", badge: "6" },
       { id: "solid",       icon: "◈",  label: "Principi SOLID",    accent: "#38bdf8", badge: "5"  },
     ]
   },
@@ -42,6 +42,14 @@ const NAV_STRUCTURE = [
     items: [
       { id: "testing",     icon: "✓",  label: "Testing & TDD",     accent: "#4ade80", badge: "5"  },
       { id: "quiz",        icon: "?",  label: "Quiz Finale",       accent: "#f59e0b", badge: null },
+    ]
+  },
+  {
+    groupLabel: "Game",
+    items: [
+      { id: "bughunt",     icon: "🐛",  label: "Trova il Bug",     accent: "#4ade80", badge: "5"  },
+      { id: "methodGuesser",        icon: "🔍",  label: "Cosa fa questo metodo?",       accent: "#f59e0b", badge: null },
+      { id: "miniIDE",        icon: "🖥️",  label: "Mini IDE",       accent: "#f59e0b", badge: null },
     ]
   }
 ];

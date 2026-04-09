@@ -10,27 +10,31 @@ const State = {
 };
 
 // ── View Registry ─────────────────────────────────────────────
-const VIEWS = {
-  home:        renderHome,
-  cleancode:   renderCleanCode,
-  solid:       renderSOLID,
-  mvc:         renderMVC,
-  creational:  renderCreational,
-  behavioral:  renderBehavioral,
-  doctrine:    renderDoctrine,
-  events:      renderEvents,
-  commands:    renderCommands,
-  security:    renderSecurity,
-  redis:       renderRedis,
-  elastic:     renderElastic,
-  //performance: renderPerformance,
-  testing:     renderTesting,
-  quiz:        renderQuiz,
-};
+function getViews() {
+  return {
+    home:           renderHome,
+    cleancode:      renderCleanCode,
+    solid:          renderSOLID,
+    mvc:            renderMVC,
+    creational:     renderCreational,
+    behavioral:     renderBehavioral,
+    doctrine:       renderDoctrine,
+    events:         renderEvents,
+    commands:       renderCommands,
+    security:       renderSecurity,
+    redis:          renderRedis,
+    elastic:        renderElastic,
+    testing:        renderTesting,
+    quiz:           renderQuiz,
+    bughunt:        renderBugHunt,
+    methodGuesser:  renderMethodGuesser,
+    miniIDE:        renderIDE,
+  };
+}
 
 // ── Router ────────────────────────────────────────────────────
 function navigate(viewId) {
-  const render = VIEWS[viewId];
+  const render = getViews()[viewId];
   if (!render) return;
   State.currentView = viewId;
 
@@ -59,11 +63,16 @@ function switchTab(groupId, index, btn) {
   panels.forEach((p, i) => p.classList.toggle('active', i === index));
 }
 
+function revealCode(id) {
+  document.getElementById(id).classList.add('revealed');
+  document.getElementById('btn_' + id).classList.add('hidden');
+}
+
 // ── Search ────────────────────────────────────────────────────
 let searchIndex = [];
 
 function buildSearchIndex() {
-  searchIndex = Object.entries(VIEWS).map(([id, fn]) => {
+    searchIndex = Object.entries(getViews()).map(([id, fn]) => {
     const html  = fn();
     const text  = html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ');
     const label = NAV_STRUCTURE.flatMap(g => g.items).find(i => i.id === id)?.label || id;
@@ -114,7 +123,7 @@ function buildSidebar() {
 // ── Home View ─────────────────────────────────────────────────
 function renderHome() {
   const topicsData = [
-    { id: 'cleancode',   icon: '✦', accent: '#38bdf8', title: 'Clean Code',      count: '12 regole', desc: 'Nomi, funzioni, DRY, commenti, DTO' },
+    { id: 'cleancode',   icon: '✦', accent: '#38bdf8', title: 'Clean Code',      count: '6 regole', desc: 'Nomi, funzioni, DRY, commenti, DTO' },
     { id: 'solid',       icon: '◈', accent: '#38bdf8', title: 'SOLID',           count: '5 principi', desc: 'I fondamenti dell\'OOP moderno' },
     { id: 'mvc',         icon: '⟳', accent: '#a78bfa', title: 'MVC', count: '3 sezioni', desc: 'Controller, Service, Entity' },
     { id: 'creational',  icon: '◎', accent: '#a78bfa', title: 'Pattern Creazionali', count: '4 pattern', desc: 'Factory, Builder, Abstract Factory' },
@@ -125,6 +134,9 @@ function renderHome() {
     { id: 'redis',       icon: '⊞', accent: '#fb923c', title: 'Cache & Redis',   count: '5 sezioni', desc: 'Cache pools, tag invalidation, sessions, rate limit' },
     { id: 'elastic',     icon: '◉', accent: '#f59e0b', title: 'Elasticsearch',   count: '4 sezioni', desc: 'Index, full-text search, aggregazioni, sync' },
     { id: 'testing',     icon: '✓', accent: '#4ade80', title: 'Testing & TDD',   count: '5 sezioni', desc: 'Unit, Integration, Functional, Mock, TDD' },
+    { id: 'bughunt',     icon: '🐛', accent: '#ef4444', title: 'Trova il Bug',   count: '', desc: 'Leggi il codice, individua il problema prima di vedere la spiegazione. Ogni bug trovato vale punti.' },
+    { id: 'methodGuesser',     icon: '🔍', accent: '#a78bfa', title: 'Cosa fa questo metodo?',   count: '', desc: 'Vedi solo firma e corpo offuscato. Se non capisci cosa fa dal nome, il nome è sbagliato' },
+    { id: 'miniIDE',     icon: '🖥️', accent: '#34d399', title: 'Mini IDE',   count: '', desc: 'Uno spazio per ogni sezione: scrivi il codice che gli studenti ti dettano, copia, confronta.' },
     //{ id: 'performance', icon: '⚡', accent: '#c084fc', title: 'Performance',     count: '4 sezioni', desc: 'Profiling, N+1, OPcache, HTTP Cache' },
   ];
 
@@ -233,7 +245,7 @@ function init() {
   buildSearchIndex();
 
   const hash = location.hash.replace('#', '') || 'home';
-  navigate(VIEWS[hash] ? hash : 'home');
+  navigate(getViews()[hash] ? hash : 'home');
 
   // Search input
   const input = document.getElementById('search-input');
@@ -254,3 +266,4 @@ window.addEventListener('DOMContentLoaded', init);
 window.navigate    = navigate;
 window.switchTab   = switchTab;
 window.answerQuiz  = answerQuiz;
+
