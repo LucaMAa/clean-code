@@ -23,7 +23,7 @@ const VIEWS = {
   security:    renderSecurity,
   redis:       renderRedis,
   elastic:     renderElastic,
-  performance: renderPerformance,
+  //performance: renderPerformance,
   testing:     renderTesting,
   quiz:        renderQuiz,
 };
@@ -125,7 +125,7 @@ function renderHome() {
     { id: 'redis',       icon: '⊞', accent: '#fb923c', title: 'Cache & Redis',   count: '5 sezioni', desc: 'Cache pools, tag invalidation, sessions, rate limit' },
     { id: 'elastic',     icon: '◉', accent: '#f59e0b', title: 'Elasticsearch',   count: '4 sezioni', desc: 'Index, full-text search, aggregazioni, sync' },
     { id: 'testing',     icon: '✓', accent: '#4ade80', title: 'Testing & TDD',   count: '5 sezioni', desc: 'Unit, Integration, Functional, Mock, TDD' },
-    { id: 'performance', icon: '⚡', accent: '#c084fc', title: 'Performance',     count: '4 sezioni', desc: 'Profiling, N+1, OPcache, HTTP Cache' },
+    //{ id: 'performance', icon: '⚡', accent: '#c084fc', title: 'Performance',     count: '4 sezioni', desc: 'Profiling, N+1, OPcache, HTTP Cache' },
   ];
 
   return `

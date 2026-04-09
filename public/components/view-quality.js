@@ -681,10 +681,6 @@ ${CodeBlock({filename:'security.yaml — JWT + refresh token', code:
             form_login:
                 login_path:  app_login   # Percorso pagina login
                 check_path:  app_login   # Percorso verifica username/password
-                enable_csrf: true        # Protezione CSRF: tipo di attacco dove un sito malevolo fa eseguire azioni a un utente autenticato senza il suo consenso
-                \n Symfony genera un token segreto unico per ogni form e sessione
-                \n Il token viene inviato insieme ai dati del form
-                \n Quando Symfony riceve il form, controlla che il token sia valido
             logout:
                 path: app_logout         # Percorso logout
                 delete_cookies: [REMEMBERME] # Cancella cookie di "ricordami"

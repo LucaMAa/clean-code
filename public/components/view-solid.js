@@ -268,29 +268,30 @@ class DoctrineFollowRepository implements FollowRepositoryInterface { }`,
 function solidDIP() {
   return `
 ${Callout({type:'info',title:'Dependency Inversion Principle',
-  body:'FeedService non deve dipendere da DoctrinePostRepository. Deve dipendere da PostRepositoryInterface. Così puoi testare senza DB e swappare l\'implementazione senza toccare il Service.'})}
+  body:'FeedService non deve dipendere da implementazioni concrete (DoctrinePostRepository, RedisCache). Deve dipendere da astrazioni (interfacce). Così: ① testi senza DB/Redis, ② scambi l\'implementazione senza toccare il Service, ③ estendi con nuovi comportamenti senza refactor.'})}
 ${CompareGrid({
   badCode:
-`// DIP violato — dipende dall'implementazione concreta
+`// ❌ DIP violato — dipende dall'implementazione concreta
 class FeedService
 {
-    private DoctrinePostRepository $postRepo;    // ← concreto!
-    private RedisCache $cache;                    // ← concreto!
-    private ElasticsearchClient $searchClient;    // ← concreto!
+    private DoctrinePostRepository $postRepo;
+    private RedisCache $cache;
+    private ElasticsearchClient $searchClient;
 
     public function __construct()
     {
-        $this->postRepo     = new DoctrinePostRepository();
-        $this->cache        = new RedisCache('localhost');
+        $this->postRepo = new DoctrinePostRepository();
+        $this->cache = new RedisCache('localhost');
         $this->searchClient = new ElasticsearchClient();
-        // impossibile testare senza infrastruttura reale
+        // Impossibile testare senza DB, Redis, Elasticsearch
+        // Impossibile usare MongoDB senza modificare FeedService
+        // Difficile aggiungere un secondo layer di cache
     }
 }`,
   goodCode:
-`// DIP rispettato — dipende dalle astrazioni
+`// ✅ DIP rispettato — dipende dalle astrazioni
 interface PostRepositoryInterface
 {
-    /** @return Post[] */
     public function findFeedForUser(User $user, int $limit): array;
     public function findByHashtag(Hashtag $tag, User $viewer): array;
 }
@@ -306,7 +307,7 @@ class FeedService
 {
     public function __construct(
         private readonly PostRepositoryInterface $postRepo,
-        private readonly FeedCacheInterface      $feedCache,
+        private readonly FeedCacheInterface $feedCache,
     ) {}
 
     public function getForUser(User $user, int $limit = 20): array
@@ -321,9 +322,10 @@ class FeedService
 }
 
 // Test: inietti InMemoryPostRepository e FakeCache
-// Prod: Symfony inietta Doctrine + Redis automaticamente`,
+// Prod: Symfony inietta DoctrinePostRepository + RedisCache
+// Aggiungere Elasticsearch? Crea SearchEngineInterface e iniettala`,
 })}
-${SectionBlock({title:'Autowiring Symfony — services.yaml', content: CodeBlock({
+${SectionBlock({title:'Autowiring Symfony — Binding Astrazioni → Implementazioni', content: CodeBlock({
   filename:'config/services.yaml',
   code:
 `services:
@@ -331,7 +333,8 @@ ${SectionBlock({title:'Autowiring Symfony — services.yaml', content: CodeBlock
         autowire: true
         autoconfigure: true
 
-    # Bind interfaccia → implementazione concreta
+    # Binding: quando il container vede PostRepositoryInterface,
+    # inietta l'implementazione concreta indicata dall'alias
     App\\Repository\\PostRepositoryInterface:
         alias: App\\Repository\\DoctrinePostRepository
 
@@ -340,6 +343,9 @@ ${SectionBlock({title:'Autowiring Symfony — services.yaml', content: CodeBlock
 
     # In test (services_test.yaml):
     # App\\Repository\\PostRepositoryInterface:
-    #     alias: App\\Repository\\InMemoryPostRepository`,
+    #     alias: App\\Repository\\InMemoryPostRepository
+    #
+    # App\\Cache\\FeedCacheInterface:
+    #     alias: App\\Cache\\InMemoryCacheAdapter`,
 })})}`;
 }

@@ -54,7 +54,9 @@ ${Tabs({ id:'cleancode', accent, tabs:[
 function ccNaming() {
   return `
 ${Callout({type:'info',title:'Regola d\'oro',
-  body:'Se devi scrivere un commento per spiegare una variabile, il nome è sbagliato. Il codice deve raccontare da solo.'})}
+  body:'Se devi scrivere un commento per spiegare una variabile, il nome è sbagliato. Il codice deve raccontare da solo. \n SII DESCRITTIVO, MA NON TROPPO LUNGO'})}
+${Callout({type:'good',title:'Regola d\'oro',
+  body:'Con PHP usa strumenti automatici per controllare la qualità del codice: PHPStan → Analizza staticamente il codice e segnala errori nei tipi e naming sospetti. PHP Mess Detector (PHP MD) → Identifica naming poco chiari, metodi troppo lunghi e codice "sporco".'})}
 ${CompareGrid({
   badFile:'PostController.php — nomi criptici',
   goodFile:'PostController.php — nomi parlanti',
@@ -91,8 +93,8 @@ ${SectionBlock({title:'Convenzioni per il dominio Instagram', content:`
 
 function ccFunctions() {
   return `
-${Callout({type:'info',title:'Una funzione = una cosa sola',
-  body:'Se descrivi il metodo con "e" (pubblica il post E invia notifiche E aggiorna il feed), va spezzato.'})}
+${Callout({type:'info',title:'Una funzione = una cosa sola, le funzioni fanno cose, quindi usa verbi nei nomi',
+  body:'Se descrivi il metodo con "and" (pubblica il post E invia notifiche E aggiorna il feed), va spezzato.'})}
 ${CompareGrid({
   badFile:'PostService.php — funzione monstre',
   goodFile:'PostService.php — responsabilità separate',
@@ -141,10 +143,14 @@ ${CompareGrid({
     // 2️⃣ Creazione del Post dal DTO
     $post = $this->postFactory->createFromDTO($dto, $author);
 
-    // 3️⃣ Salvataggio Post
+    // 3️⃣Estrazione hashtag dalla caption
+    $hashtags = $this->hashtagExtractor->extractFromPost($post);
+    $post->setHashtags($hashtags);
+
+    // 4️⃣ Salvataggio Post
     $this->postRepo->save($post, flush: true);
 
-    // 4️⃣ Dispatch dell'evento “Post pubblicato”
+    // Dispatch dell'evento “Post pubblicato”
     //    I listener gestiranno:
     //    - Estrazione hashtag
     //    - Upload media su CDN/S3
@@ -171,22 +177,18 @@ final class PostPublishedListener
     {
         $post = $event->getPost();
 
-        // 1️⃣ Estrazione hashtag dalla caption
-        $hashtags = $this->hashtagExtractor->extractFromPost($post);
-        $post->setHashtags($hashtags);
-
-        // 2️⃣ Upload media su CDN/S3
+        // Upload media su CDN/S3
         foreach ($post->getMediaFiles() as $media) {
             $this->mediaUploader->upload($media);
         }
 
-        // 3️⃣ Notifiche ai follower
+        // Notifiche ai follower
         $this->notificationService->notifyFollowers($post->getAuthor(), $post);
 
-        // 4️⃣ Invalidazione cache feed dei follower
+        // Invalidazione cache feed dei follower
         $this->cacheService->invalidateFeedCacheForFollowers($post->getAuthor());
 
-        // 5️⃣ Push notification mobile/web
+        // Push notification mobile/web
         $this->pushService->sendPostPublishedPush($post);
     }
 }
@@ -382,8 +384,7 @@ publishPost([
 final class PublishPostDTO
 {
     public function __construct(
-        #[Assert\\NotBlank]
-        #[Assert\\Length(max: 2200)]
+        #[ValidCaption]
         public readonly string $caption,
 
         #[Assert\\Count(min: 1, max: 10)]
@@ -401,64 +402,42 @@ final class PublishPostDTO
 ${SectionBlock({title:'Caption — Value Object con logica Instagram', content: CodeBlock({
   filename:'Caption.php',
   code:
-`final class Caption
+`#[Constraint(class: CaptionValidator::class)]
+final class ValidCaption
 {
-    public const MAX_LENGTH   = 2200;
+    public string $messageTooLong = 'Caption exceeds {{ max }} characters';
+    public string $messageTooManyHashtags = 'Caption has {{ count }} hashtags, max {{ max }}';
+    public string $messageEmpty = 'Caption cannot be empty';
+
+    public const MAX_LENGTH = 2200;
     public const MAX_HASHTAGS = 30;
-
-    private function __construct(
-        private readonly string $value,
-    ) {}
-
-    public static function fromString(string $raw): self
-    {
-        $trimmed = trim($raw);
-
-        if (mb_strlen($trimmed) > self::MAX_LENGTH)
-            throw new CaptionTooLongException(mb_strlen($trimmed));
-
-        if (count(self::parseHashtags($trimmed)) > self::MAX_HASHTAGS)
-            throw new TooManyHashtagsException();
-
-        return new self($trimmed);
-    }
-
-    /** @return string[] — es: ['travel','sunset','photography'] */
-    public function extractHashtags(): array
-    {
-        return self::parseHashtags($this->value);
-    }
-
-    /** @return string[] — es: ['natgeo','nasa'] */
-    public function extractMentions(): array
-    {
-        preg_match_all('/@([\\w.]+)/', $this->value, $m);
-        return $m[1];
-    }
-
-    public function preview(int $chars = 125): string
-    {
-        if (mb_strlen($this->value) <= $chars) return $this->value;
-        return mb_substr($this->value, 0, $chars) . '… more';
-    }
-
-    public function __toString(): string { return $this->value; }
-
-    private static function parseHashtags(string $text): array
-    {
-        preg_match_all('/#([\\w\\x{00C0}-\\x{024F}]+)/u', $text, $m);
-        return array_unique(array_map('strtolower', $m[1]));
-    }
 }
 
-// Nel Service — Caption porta la propria logica
-$caption = Caption::fromString($dto->caption);
-$post->setCaption($caption);
-foreach ($caption->extractHashtags() as $tag) {
-    $post->addHashtag($this->hashtagRepo->findOrCreate($tag));
-}
-foreach ($caption->extractMentions() as $username) {
-    $post->addMention($this->userRepo->findByUsername($username));
+class CaptionValidator implements ConstraintValidator
+{
+    public function validate(mixed $value, Constraint $constraint): void
+    {
+        if (!$constraint instanceof ValidCaption) return;
+
+        if (empty(trim($value))) {
+            $this->context->buildViolation($constraint->messageEmpty)->addViolation();
+            return;
+        }
+
+        if (mb_strlen($value) > $constraint::MAX_LENGTH) {
+            $this->context->buildViolation($constraint->messageTooLong)
+                ->setParameter('{{ max }}', $constraint::MAX_LENGTH)
+                ->addViolation();
+        }
+
+        $hashtags = preg_match_all('/#([\w]+)/', $value, $m) ? count(array_unique($m[1])) : 0;
+        if ($hashtags > $constraint::MAX_HASHTAGS) {
+            $this->context->buildViolation($constraint->messageTooManyHashtags)
+                ->setParameter('{{ count }}', $hashtags)
+                ->setParameter('{{ max }}', $constraint::MAX_HASHTAGS)
+                ->addViolation();
+        }
+    }
 }`,
 })})}`;
 }

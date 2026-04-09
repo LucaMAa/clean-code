@@ -43,43 +43,6 @@ class PostController
     }
 }`,
   goodCode:
-`interface PostInterface
-{
-    public function getType(): string;
-    public function isShareable(): bool;
-    public function getMediaCount(): int;
-    public function publish(): void;
-}
-
-class PhotoPost   implements PostInterface { ... }
-class VideoPost   implements PostInterface { ... }
-class ReelPost    implements PostInterface { ... }
-class CarouselPost implements PostInterface { ... }
-class StoryPost   implements PostInterface { ... }
-
-class PostFactory
-{
-    private array $creators = [];
-
-    public function register(string $type, callable $creator): void
-    {
-        $this->creators[$type] = $creator;
-    }
-
-    public function create(string $type, PublishPostDTO $dto, User $author): PostInterface
-    {
-        if (!isset($this->creators[$type]))
-            throw new UnknownPostTypeException($type);
-        return ($this->creators[$type])($dto, $author);
-    }
-}
-
-// Registrazione via tagged services in Symfony
-// Aggiungere 'live'? Solo nuova classe + tag.`,
-})}
-${SectionBlock({title:'Integrazione Symfony — TaggedIterator', content: CodeBlock({
-  filename:'PostCreatorInterface.php + services.yaml',
-  code:
 `// Ogni tipo di post ha il proprio creator
 interface PostCreatorInterface
 {
@@ -128,7 +91,7 @@ class PostFactory
         throw new UnknownPostTypeException($type);
     }
 }`,
-})})}`;
+})}`;
 }
 
 function patAbstractFactory() {
@@ -136,93 +99,41 @@ function patAbstractFactory() {
 ${Callout({type:'info',title:'Abstract Factory',
   body:'Creare famiglie di oggetti correlati per ogni tipo di media: foto crea Thumbnail + Preview + CDNUploader coerenti. Video crea altro set coerente di strumenti.'})}
 ${CodeBlock({filename:'MediaProcessingFactory — Abstract Factory completo', code:
-`abstract class AbstractMediaProcessingFactory
+`abstract class AbstractInstagramAction
 {
-    // Metodo astratto: ogni tipo di media deve implementare la generazione della thumbnail
-    abstract public function createThumbnailGenerator(): ThumbnailGeneratorInterface;
+    // Metodo astratto: ogni tipo decide la query
+    abstract protected function buildQuery(int $userId): string;
 
-    // Metodo astratto: ogni tipo di media deve implementare la generazione della preview
-    abstract public function createPreviewGenerator(): PreviewGeneratorInterface;
-
-    // Metodo astratto: ogni tipo di media deve implementare l'upload
-    abstract public function createStorageUploader(): StorageUploaderInterface;
-
-    // Metodo concreto condiviso da tutte le factory
-    public function process(MediaFile $media): ProcessedMedia
+    // Logica condivisa
+    public function execute(int $userId)
     {
-        $thumbnail = $this->createThumbnailGenerator()->generate($media);
-        $preview   = $this->createPreviewGenerator()->generate($media);
-        $url       = $this->createStorageUploader()->upload($media->getPath());
+        $query = $this->buildQuery($userId);
 
-        return new ProcessedMedia($url, $thumbnail, $preview);
+        // Simuliamo esecuzione
+        $this->log($query);
+
+        return "Eseguo: " . $query;
+    }
+
+    protected function log(string $query): void
+    {
+        echo "[LOG] $query\n";
     }
 }
 
-class PhotoProcessingFactory extends AbstractMediaProcessingFactory
+class FetchPosts extends AbstractInstagramAction
 {
-    public function createThumbnailGenerator(): ThumbnailGeneratorInterface
+    protected function buildQuery(int $userId): string
     {
-        return new ImageThumbnailGenerator(width: 150, height: 150, format: 'webp');
-    }
-
-    public function createPreviewGenerator(): PreviewGeneratorInterface
-    {
-        return new ImagePreviewGenerator(maxWidth: 1080, quality: 85);
-    }
-
-    public function createStorageUploader(): StorageUploaderInterface
-    {
-        return new S3ImageUploader($this->s3Client, bucket: 'photos');
+        return "SELECT * FROM posts WHERE user_id = $userId ORDER BY created_at DESC";
     }
 }
 
-class VideoProcessingFactory extends AbstractMediaProcessingFactory
+class FetchLikes extends AbstractInstagramAction
 {
-    public function createThumbnailGenerator(): ThumbnailGeneratorInterface
+    protected function buildQuery(int $userId): string
     {
-        return new VideoThumbnailGenerator(atSecond: 1.0);
-    }
-
-    public function createPreviewGenerator(): PreviewGeneratorInterface
-    {
-        return new VideoPreviewGenerator(durationSec: 15, format: 'mp4');
-    }
-
-    public function createStorageUploader(): StorageUploaderInterface
-    {
-        return new S3VideoUploader($this->s3Client, bucket: 'videos');
-    }
-}
-
-class MediaProcessor
-{
-    public function process(MediaFile $media, AbstractMediaProcessingFactory $factory): ProcessedMedia
-    {
-        return $factory->process($media);
-    }
-}
-//Invece di fare questo:
-class MediaProcessor
-{
-    public function process(MediaFile $media): ProcessedMedia
-    {
-        if ($media->getMimeType() === 'image/jpeg') {
-            $thumbnail = new ImageThumbnailGenerator(width: 150, height: 150, format: 'webp');
-            $preview   = new ImagePreviewGenerator(maxWidth: 1080, quality: 85);
-            $uploader  = new S3ImageUploader($s3Client, bucket: 'photos');
-        } elseif ($media->getMimeType() === 'video/mp4') {
-            $thumbnail = new VideoThumbnailGenerator(atSecond: 1.0);
-            $preview   = new VideoPreviewGenerator(durationSec: 15, format: 'mp4');
-            $uploader  = new S3VideoUploader($s3Client, bucket: 'videos');
-        } else {
-            throw new \Exception("Tipo di media non supportato");
-        }
-
-        return new ProcessedMedia(
-            $uploader->upload($media->getPath()),
-            $thumbnail->generate($media),
-            $preview->generate($media)
-        );
+        return "SELECT * FROM likes WHERE user_id = $userId";
     }
 }
 `,
@@ -870,21 +781,7 @@ class MLRanking implements FeedRankingStrategyInterface
     }
     public function getName(): string { return 'ml_personalized'; }
 }
-
-class FeedService
-{
-    public function __construct(
-        private readonly PostRepositoryInterface      $postRepo,
-        private readonly FeedRankingStrategyInterface $ranking,  // iniettata via DI
-    ) {}
-
-    public function getFeed(User $user, int $limit = 20): array
-    {
-        $posts = $this->postRepo->findCandidatesForFeed($user, $limit * 3);
-        // FeedService NON SA quale algoritmo sta usando
-        return array_slice($this->ranking->rank($posts, $user), 0, $limit);
-    }
-}`,
+`,
 })}
 
 ${Heading({level:3, text:'Senza Strategy: il problema degli if/else'})}

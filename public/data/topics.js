@@ -34,7 +34,7 @@ const NAV_STRUCTURE = [
     items: [
       { id: "redis",       icon: "⊞",  label: "Cache & Redis",     accent: "#fb923c", badge: "5"  },
       { id: "elastic",     icon: "◉",  label: "Elasticsearch",     accent: "#f59e0b", badge: "4"  },
-      { id: "performance", icon: "⚡",  label: "Performance",       accent: "#c084fc", badge: "4"  },
+      //{ id: "performance", icon: "⚡",  label: "Performance",       accent: "#c084fc", badge: "4"  },
     ]
   },
   {

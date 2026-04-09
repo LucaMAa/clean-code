@@ -978,28 +978,51 @@ class IndexPostHandler
 function renderRedis() {
   const accent = '#fb923c';
   return `
-${PageHeader({eyebrow:'Infrastruttura', title:'Cache & Redis',
-  subtitle:'Redis (REmote DIctionary Server) nasce nel 2009 da Salvatore Sanfilippo, sviluppatore siciliano. Stava costruendo un sistema di analytics real-time e il database relazionale era troppo lento: aveva bisogno di incrementare contatori e leggere liste in microsecondi. La soluzione fu tenere tutto in memoria RAM, rinunciando alla persistenza come priorità.',
-  accent})}
+${PageHeader({
+  eyebrow: 'Infrastruttura', 
+  title: 'Cache & Redis',
+  subtitle: 'Redis è una memoria velocissima in RAM. Non è un database, è una cache. Quando i dati scadono o Redis crasha, perdi tutto. Perfetto per feed (TTL 2min), contatori (TTL 1min), sessioni. Non per dati critici.',
+  accent
+})}
+
 <div class="stats-row" style="--accent-color:${accent}">
-  <div class="stat-card"><div class="stat-card__value" style="color:${accent}">~1ms</div><div class="stat-card__label">Redis latency</div></div>
-  <div class="stat-card"><div class="stat-card__value" style="color:${accent}">10k+</div><div class="stat-card__label">Feed req/sec</div></div>
-  <div class="stat-card"><div class="stat-card__value" style="color:${accent}">120s</div><div class="stat-card__label">Feed TTL</div></div>
-  <div class="stat-card"><div class="stat-card__value" style="color:${accent}">60</div><div class="stat-card__label">Like/min limit</div></div>
+  <div class="stat-card"><div class="stat-card__value" style="color:${accent}">~1ms</div><div class="stat-card__label">Latenza (vs 100-500ms del database)</div></div>
+  <div class="stat-card"><div class="stat-card__value" style="color:${accent}">In RAM</div><div class="stat-card__label">Non persiste su disco</div></div>
+  <div class="stat-card"><div class="stat-card__value" style="color:${accent}">TTL</div><div class="stat-card__label">Dati scadono automaticamente</div></div>
+  <div class="stat-card"><div class="stat-card__value" style="color:${accent}">Fallback</div><div class="stat-card__label">Se Redis crasha, ricarichi dal DB</div></div>
 </div>
+
 ${Tabs({id:'redis', accent, tabs:[
-  {label:'🔧 Setup',              content: redisSetup()},
-  {label:'📦 Feed Cache',         content: redisFeedCache()},
-  {label:'🏷️ Tag Invalidation',  content: redisTagInvalidation()},
-  {label:'🔒 Session',           content: redisSession()},
-  {label:'🔢 Rate Limiting',     content: redisRateLimit()},
-]})}`;
+  {label:'⚙️ Setup', content: redisSetup()},
+  {label:'📦 Feed Cache', content: redisFeedCache()},
+  {label:'🔄 Invalidazione', content: redisTagInvalidation()},
+  {label:'🔢 Rate Limiting', content: redisRateLimit()},
+]})}
+  `;
 }
+
 
 function redisSetup() {
   return `
-${CodeBlock({filename:'docker-compose.yml + cache.yaml', code:
-`# docker-compose.yml
+${Heading({level: 2, text: 'Perché Redis non è un Database'})}
+
+${Paragraph({text: 'Redis **non salva su disco**. Vive in RAM. Se il server crasha, tutto scompare. Non è un problema perché il dato vero rimane nel database SQL. Redis è solo una copia veloce.'})}
+
+${Heading({level: 3, text: 'Caso d\'uso perfetto'})}
+
+${Table({
+  headers: ['Caso', 'TTL', 'Perché Redis?', 'Se Redis crasha?'],
+  rows: [
+    ['Feed utente', '2 min', 'Caricarlo dal DB ogni volta è lento. Ogni 2min è ok ricaricare', 'Ricarichi dal DB, basta aspettare 100ms'],
+    ['Like count', '1 min', 'Cambia ogni secondo. Non serve perfetto al millesimo', 'Leggi il valore vero dal DB'],
+    ['Sessione login', '30 gg', 'Serve veloce ma persiste (Redis + DB)', 'Il DB mantiene la sessione'],
+    ['Post singolo', '1 ora', 'Non cambia. Cachare 1 ora è safe', 'Ricarichi dal DB'],
+  ]
+})}
+
+${CodeBlock({
+  filename: 'docker-compose.yml',
+  code: `version: '3.8'
 services:
   redis:
     image: redis:7-alpine
@@ -1009,297 +1032,240 @@ services:
       --maxmemory-policy allkeys-lru
       --save ""
       --appendonly no
-    ports: ["6379:6379"]
+    ports:
+      - "6379:6379"
+`
+})}
 
-# .env
-REDIS_URL=redis://redis:6379
-REDIS_FEED_URL=redis://redis:6379/1      # feed cache
-REDIS_SESSION_URL=redis://redis:6379/2   # sessioni utente
-REDIS_RATE_URL=redis://redis:6379/3      # rate limiting
+${Paragraph({text: '**--save ""** = non salvare su disco. **--appendonly no** = niente log. **--maxmemory-policy allkeys-lru** = quando la RAM è piena, cancella i dati meno usati.'})}
 
-# config/packages/cache.yaml
-framework:
-    cache:
-        default_redis_provider: '%env(REDIS_URL)%'
-        pools:
-            # Feed - TTL breve, cambia spesso
-            cache.feed:
-                adapter: cache.adapter.redis
-                provider: '%env(REDIS_FEED_URL)%'
-                default_lifetime: 120
-                tags: true
+${CodeBlock({
+  filename: '.env',
+  code: `REDIS_FEED_URL=redis://redis:6379/1
+REDIS_SESSION_URL=redis://redis:6379/2
+REDIS_RATE_URL=redis://redis:6379/3
+`
+})}
 
-            # Post singolo - TTL più lungo
-            cache.posts:
-                adapter: cache.adapter.redis
-                default_lifetime: 3600
-                tags: true
+${CodeBlock({
+  filename: 'config/packages/cache.yaml',
+  code: `framework:
+  cache:
+    pools:
+      cache.feed:
+        adapter: cache.adapter.redis
+        provider: '%env(REDIS_FEED_URL)%'
+        default_lifetime: 120
+        tags: true
 
-            # Like count - TTL breve (aggiornato spesso)
-            cache.likes:
-                adapter: cache.adapter.redis
-                default_lifetime: 60
-                tags: true`,
-})}`;
+      cache.posts:
+        adapter: cache.adapter.redis
+        default_lifetime: 3600
+        tags: true
+
+      cache.likes:
+        adapter: cache.adapter.redis
+        default_lifetime: 60
+        tags: true
+`
+})}
+  `;
 }
 
 function redisFeedCache() {
   return `
-${CodeBlock({filename:'RedisFeedCache.php — Cache-Aside Pattern', code:
-`class RedisFeedCache implements FeedCacheInterface
-{
-    private const TTL_FEED        = 120;   // 2 min — feed cambia spesso
-    private const TTL_LIKE_COUNT  = 60;    // 1 min — aggiornato a ogni like
-    private const TTL_POST_DETAIL = 3600;  // 1 ora — post non cambia spesso
-    private const FEED_PAGE_SIZE  = 20;
+${Heading({level: 2, text: 'Feed Cache — Cache-Aside Pattern'})}
 
-    public function __construct(
-        private readonly TagAwareCacheInterface $feedCache,
-        private readonly TagAwareCacheInterface $postCache,
-    ) {}
+${Paragraph({text: 'Cache-Aside: "Prendi da Redis, se non c\'è prendi dal DB e mettilo in Redis". Semplice. Se Redis è down, il dato viene comunque caricato dal DB.'})}
 
-    // Cache-Aside: cerca in cache, se manca calcola e salva
-    public function getFeedForUser(User $user, int $page = 1): ?array
-    {
-        return $this->feedCache->get(
-            $this->feedKey($user, $page),
-            function (ItemInterface $item) use ($user, $page) {
-                $item->expiresAfter(self::TTL_FEED);
-                $item->tag([
-                    "user.{$user->getId()}.feed",
-                    'feeds',
-                ]);
-                // Cache miss: ritorna null, il caller usa il DB
-                return null;
-            }
-        );
+${CodeBlock({
+  filename: 'src/Cache/RedisFeedCache.php',
+  code: `class RedisFeedCache implements FeedCacheInterface {
+  private const TTL_FEED = 120;
+
+  public function __construct(
+    private readonly TagAwareCacheInterface $feedCache,
+    private readonly PostRepository $postRepo,
+  ) {}
+
+  public function getFeedForUser(User $user, int $page = 1): array {
+    $key = "feed.user.{$user->getId()}.page.{$page}";
+
+    // Prova a prendere da Redis
+    $cached = $this->feedCache->get($key);
+    if ($cached !== null) {
+      return $cached; // Cache hit — 1ms
     }
 
-    public function setFeedForUser(User $user, int $page, array $posts): void
-    {
-        $item = $this->feedCache->getItem($this->feedKey($user, $page));
-        $item->set($posts)
-             ->expiresAfter(self::TTL_FEED)
-             ->tag(["user.{$user->getId()}.feed", 'feeds']);
-        $this->feedCache->save($item);
-    }
+    // Cache miss — vai al database
+    $posts = $this->postRepo->getFeedForUser($user, $page);
 
-    // Quando un utente pubblica, invalida il feed di TUTTI i suoi follower
-    public function invalidateForFollowers(User $author, array $followerIds): void
-    {
-        // Invalida per tag — una sola operazione Redis
-        $tags = array_map(fn($id) => "user.{$id}.feed", $followerIds);
-        $this->feedCache->invalidateTags($tags);
-    }
+    // Salva in cache per la prossima volta
+    $this->feedCache->set($key, $posts, self::TTL_FEED, [
+      "user.{$user->getId()}.feed"
+    ]);
 
-    // Like count con write-through: aggiorna subito la cache
-    public function getLikeCount(Post $post): ?int
-    {
-        try {
-            $item = $this->postCache->getItem("like.count.{$post->getId()}");
-            return $item->isHit() ? (int) $item->get() : null;
-        } catch (\\Exception) {
-            return null; // fallback al DB
-        }
-    }
+    return $posts;
+  }
 
-    public function incrementLikeCount(Post $post): void
-    {
-        $key  = "like.count.{$post->getId()}";
-        $item = $this->postCache->getItem($key);
-        $current = $item->isHit() ? (int) $item->get() : $post->getLikeCount();
-        $item->set($current + 1)->expiresAfter(self::TTL_LIKE_COUNT)
-             ->tag(["post.{$post->getId()}"]);
-        $this->postCache->save($item);
-    }
+  public function invalidateForFollowers(User $author, array $followerIds): void {
+    $tags = array_map(fn($id) => "user.{$id}.feed", $followerIds);
+    $this->feedCache->invalidateTags($tags);
+    // Cancella il feed di tutti i follower. Ricarichiamo dal DB la prossima volta
+  }
 
-    private function feedKey(User $user, int $page): string
-    {
-        return "feed.user.{$user->getId()}.page.{$page}";
-    }
-}`,
-})}`;
+  public function incrementLikeCount(Post $post): void {
+    $key = "like.count.{$post->getId()}";
+    $current = $this->feedCache->get($key) ?? $post->getLikeCount();
+    $this->feedCache->set($key, $current + 1, self::TTL_LIKE_COUNT);
+  }
+}
+`
+})}
+
+${Heading({level: 3, text: 'Nel Controller'})}
+
+${CodeBlock({
+  filename: 'src/Controller/FeedController.php',
+  code: `class FeedController {
+  public function __construct(
+    private readonly RedisFeedCache $feedCache,
+  ) {}
+
+  public function feed(Request $request, User $user): Response {
+    $page = (int)$request->query->get('page', 1);
+    
+    // RedisFeedCache gestisce automaticamente cache + fallback DB
+    $posts = $this->feedCache->getFeedForUser($user, $page);
+    
+    return $this->json($posts);
+  }
+}
+`
+})}
+
+${Paragraph({text: '**Come funziona**: Primo caricamento → Redis è vuoto → leggi dal DB (lento) → salva in Redis. Ricaricamento entro 2 minuti → Redis ha i dati → leggi da Redis (veloce). Dopo 2 minuti → TTL scaduto → Redis cancella → ricarica dal DB.'})}
+  `;
 }
 
 function redisTagInvalidation() {
   return `
-${CodeBlock({filename:'CacheInvalidationSubscriber.php — invalida per tag', code:
-`class CacheInvalidationSubscriber implements EventSubscriberInterface
-{
-    public function __construct(
-        private readonly RedisFeedCache              $feedCache,
-        private readonly TagAwareCacheInterface      $postCache,
-        private readonly FollowRepositoryInterface   $followRepo,
-    ) {}
+${Heading({level: 2, text: 'Tag Invalidation — invalida dati correlati'})}
 
-    public static function getSubscribedEvents(): array
-    {
-        return [
-            PostPublishedEvent::class => 'onPostPublished',
-            PostLikedEvent::class     => 'onPostLiked',
-            PostDeletedEvent::class   => 'onPostDeleted',
-            UserFollowedEvent::class  => 'onUserFollowed',
-        ];
-    }
+${Paragraph({text: 'I tag sono etichette. Quando Mario pubblica, invalidi il tag "user.FOLLOWER.feed" e automaticamente tutti i feed in cache dei follower vengono cancellati.'})}
 
-    // Nuovo post: invalida il feed di tutti i follower
-    public function onPostPublished(PostPublishedEvent $event): void
-    {
-        $followerIds = $this->followRepo->findFollowerIds($event->author);
-        $this->feedCache->invalidateForFollowers($event->author, $followerIds);
-    }
+${CodeBlock({
+  filename: 'src/EventSubscriber/CacheInvalidationSubscriber.php',
+  code: `class CacheInvalidationSubscriber implements EventSubscriberInterface {
+  public function __construct(
+    private readonly RedisFeedCache $feedCache,
+    private readonly TagAwareCacheInterface $postCache,
+    private readonly FollowRepository $followRepo,
+  ) {}
 
-    // Nuovo like: aggiorna contatore in cache (write-through)
-    public function onPostLiked(PostLikedEvent $event): void
-    {
-        $this->feedCache->incrementLikeCount($event->post);
-        // Invalida la cache del profilo dell'autore (statistiche)
-        $this->postCache->invalidateTags([
-            "user.{$event->post->getAuthor()->getId()}.stats",
-        ]);
-    }
+  public static function getSubscribedEvents(): array {
+    return [
+      PostPublishedEvent::class => 'onPostPublished',
+      PostLikedEvent::class => 'onPostLiked',
+      PostDeletedEvent::class => 'onPostDeleted',
+    ];
+  }
 
-    // Post eliminato: invalida tutto quello che lo riguarda
-    public function onPostDeleted(PostDeletedEvent $event): void
-    {
-        $this->postCache->invalidateTags([
-            "post.{$event->postId}",
-        ]);
-        // Il feed verrà invalidato dal prossimo evento di follow/publish
-    }
+  public function onPostPublished(PostPublishedEvent $event): void {
+    // Mario pubblica. Prendi tutti i follower
+    $followerIds = $this->followRepo->findFollowerIds($event->author);
+    
+    // Invalida il feed di TUTTI i follower
+    $this->feedCache->invalidateForFollowers($event->author, $followerIds);
+    // La prossima volta che caricano il feed, ricarichiamo dal DB
+  }
 
-    // Nuovo follow: invalida il feed del nuovo follower
-    public function onUserFollowed(UserFollowedEvent $event): void
-    {
-        if ($event->requiresApproval) return; // feed non cambia finché non approvato
+  public function onPostLiked(PostLikedEvent $event): void {
+    // Nuovo like — aggiorna il contatore in cache
+    $this->feedCache->incrementLikeCount($event->post);
+  }
 
-        $this->postCache->invalidateTags([
-            "user.{$event->follower->getId()}.feed",
-        ]);
-    }
-}`,
-})}`;
+  public function onPostDeleted(PostDeletedEvent $event): void {
+    // Post eliminato — invalida il tag
+    $this->postCache->invalidateTags(["post.{$event->postId}"]);
+  }
 }
+`
+})}
 
-function redisSession() {
-  return `
-${CodeBlock({filename:'Session Redis — scaling orizzontale', code:
-`# framework.yaml — sessioni in Redis (multi-server ready)
-framework:
-    session:
-        handler_id: Symfony\\Component\\HttpFoundation\\Session\\Storage\\Handler\\RedisSessionHandler
-        cookie_secure:   auto
-        cookie_samesite: lax
-        cookie_httponly: true
-        cookie_lifetime: 2592000  # 30 giorni (keep me logged in)
-        gc_maxlifetime:  2592000
+${Heading({level: 3, text: 'Cosa succede in sequenza'})}
 
-# Con Redis Sessions:
-# - Deploy senza perdere sessioni attive
-# - Scaling a N server senza sticky sessions
-# - Logout globale da tutti i dispositivi (GDPR)
-
-class SessionService
-{
-    // Salva il device corrente nella sessione (come Instagram "Dispositivi attivi")
-    public function registerDevice(User $user, Request $req): void
-    {
-        $session = $req->getSession();
-        $devices = $session->get('active_devices', []);
-        $deviceId = md5($req->headers->get('User-Agent') . $req->getClientIp());
-
-        $devices[$deviceId] = [
-            'device'    => $this->detectDevice($req),
-            'ip'        => $req->getClientIp(),
-            'city'      => $this->geoip->getCityByIp($req->getClientIp()),
-            'lastSeen'  => new \\DateTimeImmutable(),
-        ];
-
-        $session->set('active_devices', $devices);
-        $session->set('user_id', $user->getId());
-    }
-
-    // Logout da tutti i dispositivi — elimina tutte le sessioni Redis
-    public function logoutFromAllDevices(User $user): int
-    {
-        $pattern    = "PHPREDIS_SESSION:*";
-        $sessionIds = $this->redis->keys($pattern);
-        $deleted    = 0;
-
-        foreach ($sessionIds as $key) {
-            $data = $this->redis->get($key);
-            if ($data && str_contains($data, "user_id|i:{$user->getId()}")) {
-                $this->redis->del($key);
-                $deleted++;
-            }
-        }
-        return $deleted;
-    }
-}`,
-})}`;
+1. Mario pubblica un post → **evento PostPublished**
+2. Listener trova i 1000 follower di Mario
+3. Invalida il tag "user.FOLLOWER_ID.feed" per tutti e 1000
+4. Redis cancella il feed dalla cache
+5. Quando un follower ricarica → **cache miss** → ricarica dal DB (contiene il nuovo post di Mario)
+6. Salva in Redis con TTL 2 minuti
+  `;
 }
 
 function redisRateLimit() {
   return `
-${CodeBlock({filename:'Rate Limiting — limiti reali di Instagram', code:
-`# config/packages/rate_limiter.yaml
-framework:
-    rate_limiter:
-        # Max 60 like al minuto (simile al limite Instagram)
-        post_likes:
-            policy: sliding_window
-            limit: 60
-            interval: '1 minute'
+${Heading({level: 2, text: 'Rate Limiting — limitare le azioni'})}
 
-        # Max 30 commenti all'ora
-        post_comments:
-            policy: token_bucket
-            limit: 30
-            rate: { interval: '1 hour', amount: 30 }
+${Paragraph({text: 'Redis mantiene un contatore per utente. "Mario ha fatto 5 like in questo minuto. Se ne fa altri, blocco." Il contatore scade ogni minuto.'})}
 
-        # Max 10 post al giorno per account non verificati
-        post_publishing:
-            policy: fixed_window
-            limit: 10
-            interval: '24 hours'
+${CodeBlock({
+  filename: 'config/packages/rate_limiter.yaml',
+  code: `framework:
+  rate_limiter:
+    post_likes:
+      policy: sliding_window
+      limit: 60
+      interval: '1 minute'
 
-        # Follow: max 200 al giorno (anti-bot)
-        user_follows:
-            policy: sliding_window
-            limit: 200
-            interval: '24 hours'
+    post_comments:
+      policy: sliding_window
+      limit: 30
+      interval: '1 hour'
+`
+})}
 
-// Applicato nel Service (non nel Controller — logica di business)
-class LikeService
-{
-    public function __construct(
-        private readonly RateLimiterFactory $likeLimiterFactory,
-        private readonly PostRepositoryInterface $postRepo,
-    ) {}
+${CodeBlock({
+  filename: 'src/Service/LikeService.php',
+  code: `class LikeService {
+  public function __construct(
+    private readonly RateLimiterFactory $limiter,
+    private readonly LikeRepository $likeRepo,
+  ) {}
 
-    public function like(Post $post, User $user): void
-    {
-        // Rate limit per utente
-        $limiter = $this->likeLimiterFactory->create("like.{$user->getId()}");
-        $limit   = $limiter->consume(1);
+  public function like(Post $post, User $user): void {
+    $limiter = $this->limiter->create("like.{$user->getId()}");
+    $limit = $limiter->consume(1);
 
-        if (!$limit->isAccepted()) {
-            throw new RateLimitExceededException(
-                retryAfter: $limit->getRetryAfter(),
-                message:    'You are liking too fast. Slow down!'
-            );
-        }
-
-        // Procedi con il like normale
-        $this->policy->assertCanInteract($user, $post);
-        $like = new Like($post, $user);
-        $this->likeRepo->save($like, flush: true);
-        $this->dispatcher->dispatch(new PostLikedEvent($like, $post, $user));
+    if (!$limit->isAccepted()) {
+      throw new RateLimitExceededException(
+        retryAfter: $limit->getRetryAfter(),
+        message: 'Too many likes. Wait ' . $limit->getRetryAfter() . 's'
+      );
     }
-}`,
-})}`;
-}
 
+    $like = new Like($post, $user);
+    $this->likeRepo->save($like, flush: true);
+  }
+}
+`
+})}
+
+${Heading({level: 3, text: 'Come funziona'})}
+
+${Table({
+  headers: ['Azione', 'Redis fa'],
+  rows: [
+    ['Utente mette 1° like', 'Crea chiave "like.123" = 1'],
+    ['Utente mette 2° like (stesso minuto)', 'Incrementa a 2'],
+    ['Utente mette 60° like', 'Incrementa a 60 (limite raggiunto)'],
+    ['Utente tenta 61° like', 'Blocco: "Aspetta X secondi"'],
+    ['Passa 1 minuto', 'Contatore scade, ritorna a 0'],
+  ]
+})}
+  `;
+}
 // ── ELASTICSEARCH ─────────────────────────────────────────────
 function renderElastic() {
   const accent = '#f59e0b';
